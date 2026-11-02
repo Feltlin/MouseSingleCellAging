@@ -1,0 +1,22 @@
+# Rebuild with:  conda env create -f environment.yml
+# Update with:   conda env update -f environment.yml
+name: scaging
+channels:
+  - conda-forge
+dependencies:
+  - python=3.14
+  - pip
+  - pip:
+      - scanpy>=1.12
+      - anndata
+      - scikit-learn
+      - seaborn
+      - pooch
+      - leidenalg
+      - igraph
+      - scikit-image
+      - pydeseq2
+      - lightgbm
+      - jupyterlab
+      - ipykernel
+      - nbdime
