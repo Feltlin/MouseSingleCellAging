@@ -11,6 +11,10 @@ Expected AnnData (as written by 03_preprocess.ipynb):
 """
 from __future__ import annotations
 
+from itertools import combinations
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -43,17 +47,96 @@ DISSOCIATION = ["Fos", "Fosb", "Jun", "Junb", "Jund", "Egr1", "Atf3", "Ier2", "I
 # Circadian clock genes: differences point to different times of day at collection (batch)
 CIRCADIAN = ["Dbp", "Nr1d1", "Nr1d2", "Per1", "Per2", "Per3", "Arntl", "Cry1", "Tef"]
 
-MYELOID = ["classical monocyte", "intermediate monocyte", "non-classical monocyte",
-           "lung macrophage", "alveolar macrophage"]
+# ----------------------------------------------------------------------------
+# Per-tissue settings
+# ----------------------------------------------------------------------------
+# A new tissue needs no entry to run; add one only after reviewing its Phase 2-4
+# checks (outlier mice, pooled samples). Keys, all optional:
+#   exclude            {mouse: {"cell_types": [...], "reason": str}}  dropped from those cell types
+#   odd_mice           samples left out of composition trends
+#   inspect_mice       mice plotted one at a time on the UMAP (03)
+#   cross_age_splits   hand-picked (train ages, test ages) pairs; the generic
+#                      cross_age_splits() is always reported alongside
+#   composition_cell_types, example_pass, example_fail, example_clock
+#                      cell types shown in 04, 05b and 05c (otherwise picked automatically)
+LUNG_MYELOID = ["classical monocyte", "intermediate monocyte", "non-classical monocyte",
+                "lung macrophage", "alveolar macrophage"]
 
-# Mice excluded from specific cell types, with the reason (Lung findings)
-EXCLUDE = {"30-M-2": {"cell_types": MYELOID, "reason": "abnormal myeloid expansion"}}
+TISSUE_SETTINGS = {
+    "Lung": {
+        "exclude": {"30-M-2": {"cell_types": LUNG_MYELOID, "reason": "abnormal myeloid expansion"}},
+        "odd_mice": ["30-M-2", "3-M-5/6", "3-M-7/8"],
+        "inspect_mice": ["30-M-2", "30-M-5"],
+        "cross_age_splits": [({"1m", "18m", "21m"}, {"3m", "30m"}),
+                             ({"3m", "30m"}, {"1m", "18m", "21m"})],
+        "composition_cell_types": ["B cell", "CD8-positive, alpha-beta T cell",
+                                   "CD4-positive, alpha-beta T cell", "NK cell",
+                                   "bronchial smooth muscle cell", "classical monocyte",
+                                   "alveolar macrophage", "fibroblast of lung"],
+        "example_pass": "fibroblast of lung",
+        "example_fail": "CD8-positive, alpha-beta T cell",
+        "example_clock": "alveolar macrophage",
+    },
+}
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
-def main_kw(ct: str) -> dict:
-    """Keyword arguments for the main analysis of one cell type (applies EXCLUDE)."""
-    drop = [m for m, rule in EXCLUDE.items() if ct in rule["cell_types"]]
+def settings(tissue: str) -> dict:
+    """Settings for one tissue ({} if the tissue has none yet)."""
+    return TISSUE_SETTINGS.get(tissue, {})
+
+
+def paths(tissue: str) -> SimpleNamespace:
+    """File locations for one tissue. figure() creates the tissue's figure folder.
+
+    official   the h5ad as downloaded from figshare
+    raw        the same, rewritten once by 02 (silences old-format warnings)
+    processed  written by 03
+    """
+    data = ROOT / "data" / tissue
+    fig_dir = ROOT / "figure" / tissue
+
+    def figure(name: str) -> Path:
+        fig_dir.mkdir(parents=True, exist_ok=True)
+        return fig_dir / name
+
+    return SimpleNamespace(
+        data=data,
+        official=data / f"tabula-muris-senis-droplet-processed-official-annotations-{tissue}.h5ad",
+        raw=data / "raw.h5ad",
+        processed=data / "processed.h5ad",
+        figure=figure,
+    )
+
+
+def slug(name: str) -> str:
+    """File-name-safe short form: "CD8-positive, alpha-beta T cell" -> "CD8-positive", "3-M-5/6" -> "3-M-5_6"."""
+    return name.split(",")[0].replace(" ", "_").replace("/", "_")
+
+
+def main_kw(ct: str, tissue: str) -> dict:
+    """Keyword arguments for the main analysis of one cell type (applies the tissue's exclusions)."""
+    exclude = settings(tissue).get("exclude", {})
+    drop = [m for m, rule in exclude.items() if ct in rule["cell_types"]]
     return {"drop_mice": drop} if drop else {}
+
+
+def ages_in(adata) -> list:
+    """Ages present in the data, youngest first."""
+    return sorted(adata.obs["age"].astype(str).unique(), key=AGE_MONTHS.get)
+
+
+def flag_outlier_mice(adata, share: float = 0.5, min_cells: int = 100) -> pd.DataFrame:
+    """Mice that supply more than `share` of a cell type's cells (cell types with >= min_cells).
+    A flag is a prompt to look (as with Lung 30-M-2), not a decision to exclude."""
+    tab = pd.crosstab(adata.obs["cell_ontology_class"], adata.obs["mouse.id"])
+    tab = tab[tab.sum(axis=1) >= min_cells]
+    frac = tab.div(tab.sum(axis=1), axis=0)
+    top = frac.idxmax(axis=1)
+    out = pd.DataFrame({"top_mouse": top, "share": frac.max(axis=1), "n_cells": tab.sum(axis=1),
+                        "n_mice": (tab > 0).sum(axis=1)})
+    return out[out["share"] > share].sort_values("share", ascending=False)
 
 
 # ----------------------------------------------------------------------------
@@ -106,12 +189,12 @@ def feature_mask(adata, level: str = "bio", ct: str | None = None,
 # Data prep
 # ----------------------------------------------------------------------------
 def prep(adata, ct, ages=None, target="binary", features=None, max_cells=300, seed=0,
-         keep_mice=None, drop_mice=None):
+         keep_mice=None, drop_mice=None, return_ages=False):
     """Cells of one type, at most `max_cells` per mouse.
 
     target="binary": y = 1 for OLD ages, 0 otherwise
     target="months": y = age in months
-    Returns X (dense), y, mouse ids.
+    Returns X (dense), y, mouse ids (and each cell's age label if return_ages).
     """
     ages = (YOUNG + OLD) if ages is None else ages
     obs = adata.obs
@@ -133,17 +216,43 @@ def prep(adata, ct, ages=None, target="binary", features=None, max_cells=300, se
     else:
         raise ValueError(target)
     mice = sub.obs["mouse.id"].astype(str).to_numpy()
+    if return_ages:
+        return X, y, mice, sub.obs["age"].astype(str).to_numpy()
     return X, y, mice
 
 
-def usable_cell_types(adata, min_cells=50, min_mice=2) -> list:
-    """Cell types with >= min_cells and >= min_mice in both young and old groups."""
+def usable_cell_types(adata, min_cells=50, min_mice=2, min_ages=1) -> list:
+    """Cell types with >= min_cells, >= min_mice and >= min_ages distinct ages in both
+    young and old groups. min_ages=2 is what the cross-age batch check needs."""
     obs = adata.obs[adata.obs.age.isin(YOUNG + OLD)].copy()
     obs["group"] = np.where(obs.age.isin(OLD), "old", "young")
+    obs["age_str"] = obs["age"].astype(str)
     size = obs.groupby(["cell_ontology_class", "group"], observed=True).agg(
-        cells=("mouse.id", "size"), mice=("mouse.id", "nunique")).unstack()
-    ok = size[(size["cells"] >= min_cells).all(axis=1) & (size["mice"] >= min_mice).all(axis=1)]
+        cells=("mouse.id", "size"), mice=("mouse.id", "nunique"), ages=("age_str", "nunique")).unstack()
+    ok = size[(size["cells"] >= min_cells).all(axis=1) & (size["mice"] >= min_mice).all(axis=1)
+              & (size["ages"] >= min_ages).all(axis=1)]
     return list(ok.index)
+
+
+def cross_age_splits(ages) -> list:
+    """Every (train ages, test ages) split for the batch check, from the ages present.
+
+    One young age goes to train with a non-empty, proper subset of the old ages; the
+    other young age and the remaining old ages go to test. So no age group is ever in
+    both, and each side has young and old. Needs 2 young and >= 2 old ages; returns []
+    otherwise (e.g. a tissue with only 3m young mice is "not testable")."""
+    young = [a for a in YOUNG if a in set(ages)]
+    old = [a for a in OLD if a in set(ages)]
+    if len(young) < 2 or len(old) < 2:
+        return []
+    splits = []
+    for y_train in young:
+        for k in range(1, len(old)):
+            for subset in combinations(old, k):
+                train = {y_train, *subset}
+                test = (set(young) - {y_train}) | (set(old) - set(subset))
+                splits.append((train, test))
+    return splits
 
 
 # ----------------------------------------------------------------------------
@@ -194,12 +303,12 @@ def age_auc(adata, ct, **kw):
 
 def cross_age_auc(adata, ct, make_model=logreg, splits=None, **prep_kw):
     """Train on some age groups, test on different ones (batch check).
-    Default splits fit Lung's ages (1m, 3m, 18m, 21m, 30m)."""
-    X, y, mice = prep(adata, ct, **prep_kw)
-    ages = np.array([m.split("-")[0] + "m" for m in mice])
+    splits=None uses every split from cross_age_splits() for the ages this cell type has;
+    pass a tissue's hand-picked splits (settings(tissue)["cross_age_splits"]) to reproduce them.
+    NaN means not testable (no split with young and old on both sides)."""
+    X, y, mice, ages = prep(adata, ct, return_ages=True, **prep_kw)
     if splits is None:
-        splits = [({"1m", "18m", "21m"}, {"3m", "30m"}),
-                  ({"3m", "30m"}, {"1m", "18m", "21m"})]
+        splits = cross_age_splits(set(ages))
     aucs = []
     for train_ages, test_ages in splits:
         tr, te = np.isin(ages, list(train_ages)), np.isin(ages, list(test_ages))
@@ -271,9 +380,13 @@ def trajectories(adata, ct, drop_mice=None, exclude=(), min_expr=0.1):
     keep = (grp.max() > min_expr) & ~grp.columns.isin(list(exclude)) \
         & ~grp.columns.str.match(TECHNICAL_PATTERN) & ~grp.columns.isin(AMBIENT)
     grp = grp.loc[:, keep]
-    old_mean = grp.loc[[a for a in OLD if a in grp.index]].mean()
-    return pd.DataFrame({"development": grp.loc["3m"] - grp.loc["1m"],
-                         "aging": old_mean - grp.loc["3m"]})
+    old = [a for a in OLD if a in grp.index]
+    nan = pd.Series(np.nan, index=grp.columns)
+    # Without 1m there is no development step; without 3m, aging is measured from 1m.
+    young_ref = "3m" if "3m" in grp.index else ("1m" if "1m" in grp.index else None)
+    development = grp.loc["3m"] - grp.loc["1m"] if {"1m", "3m"} <= set(grp.index) else nan
+    aging = grp.loc[old].mean() - grp.loc[young_ref] if (old and young_ref) else nan
+    return pd.DataFrame({"development": development, "aging": aging})
 
 
 def label_patterns(tr, big=0.5, small=0.2):

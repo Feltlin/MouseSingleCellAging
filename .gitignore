@@ -10,6 +10,9 @@
 # Superseded notebooks, kept locally only
 /notebook/archive/
 
+# Executed per-tissue copies written by src/run_tissue.py
+/notebook/run/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

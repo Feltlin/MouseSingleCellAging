@@ -172,17 +172,26 @@ quietly committing the outputs.
 
 ### The Run
 
-There is no single entry point. Each phase is one notebook in `notebook/`, run
-in order, and each reads the file the previous one wrote:
+Each phase is one notebook in `notebook/`, run in order, and each reads the file
+the previous one wrote. The tissue is a parameter: the first cell of `02`–`05c`
+reads `TISSUE` (default `Lung`), and every path is built from it.
 
 ```bash
 conda activate scaging
-jupyter lab            # then run 02, 03, 04, 05a, 05b, 05c in that order
+python src/download.py --list                  # what figshare holds, and the size
+python src/download.py droplet Lung Kidney     # or: droplet all
+python src/run_tissue.py Lung Kidney           # run 02 -> 05c for each tissue
 ```
 
+`run_tissue.py` executes the notebook without opening them and saves each
+executed copy, output included, to `notebook/run/{Tissue}/`; the notebook in
+`notebook/` stay unchanged. `--from 05a` restarts a tissue part way. To work by
+hand instead, open the notebook in `jupyter lab` and set `TISSUE` in its first
+cell.
+
 The order is not a style preference. `03` writes the `.h5ad` that every later
-notebook load, and `05b` and `05c` both read `figure/lung_age_auroc.csv`, so
-`05a` has to run before them on a fresh clone.
+notebook load, and `05b` and `05c` both read `figure/{Tissue}/age_auroc.csv`,
+so `05a` has to run before them on a fresh clone.
 
 ### Every Setting
 
@@ -199,11 +208,22 @@ phase-5 notebook at once:
 | `TECHNICAL_PATTERN` | `Rp[sl]`, `Malat1`, `Xist`, `Ddx3y` … | Ribosomal, rRNA, and sex-linked gene |
 | `DISSOCIATION` | *Fos*, *Jun*, *Hspa1a* … | Gene induced by tissue digestion, flagged not dropped |
 | `CIRCADIAN` | *Dbp*, *Nr1d1*, *Per1* … | Time-of-day gene, flagged as a batch signature |
-| `EXCLUDE` | 30-M-2 in myeloid | Mouse dropped from named cell type only, with a reason |
-| `MYELOID` | monocyte, macrophage | The cell type that `EXCLUDE` applies to |
+| `TISSUE_SETTINGS` | Lung only | Every per-tissue choice, in one place (below) |
 | `C` | 0.1 | L2 strength of the logistic regression |
 | `alpha` | 10, 100, 1000 | Ridge strength of the clock; all three are reported |
 | `min_cells` / `min_mice` | 50 / 2 | A cell type below this in either class is not modelled |
+| `min_ages` | 1, or 2 for the survey | Distinct age per class; the cross-age check needs 2 |
+
+A tissue runs with no entry in `TISSUE_SETTINGS`, on automatic choice. An entry
+is added only after a person has reviewed that tissue's phase 2–4 check:
+
+| Key | Lung | Meaning |
+| --- | --- | --- |
+| `exclude` | 30-M-2 in myeloid | Donor dropped from named cell type only, with a reason |
+| `odd_mice` | 30-M-2, 3-M-5/6, 3-M-7/8 | Sample left out of the composition trend |
+| `inspect_mice` | 30-M-2, 30-M-5 | Donor plotted one at a time on the UMAP |
+| `cross_age_splits` | 1m+18m+21m vs 3m+30m | A hand-picked batch-check split, reported next to the generic one |
+| `composition_cell_types`, `example_*` | 8 cell type; fibroblast, CD8 T, alveolar macrophage | Cell type shown in `04`, `05b`, `05c` |
 
 ### Calling It Directly
 
@@ -214,10 +234,11 @@ on any tissue from a plain script:
 import scanpy as sc
 from src import aging as ag
 
-adata = sc.read_h5ad("data/lung_processed.h5ad")
+TISSUE = "Lung"
+adata = sc.read_h5ad(ag.paths(TISSUE).processed)    # data/Lung/processed.h5ad
 
 for ct in ag.usable_cell_types(adata):
-    kw = ag.main_kw(ct)                       # applies EXCLUDE for this cell type
+    kw = ag.main_kw(ct, TISSUE)               # applies the tissue's exclusion for this cell type
     print(ct,
           round(ag.age_auc(adata, ct, **kw), 2),             # unseen mice
           round(ag.cross_age_auc(adata, ct, **kw), 2),       # unseen age group
@@ -267,16 +288,19 @@ For a new tissue they are not optional:
 - **Composition versus expression.** A cell type can change in number without
   any cell changing inside, and tissue dissociation affect number. Phase 4
   answers the count question separately so phase 5 can be about expression only.
-- **Which age exist.** Lung has no 24m group. The cross-age split has to be
-  written for the age a tissue actually has.
+- **Which age exist.** Lung has no 24m group, and Thymus droplet has one young
+  donor and no 1m. `cross_age_splits` builds the split from the age a tissue
+  actually has, and a tissue without two young and two old age is reported as
+  not testable rather than dropped. `06_survey` counts this for every tissue
+  before any of them is modelled.
 
 ### The Current Tissue
 
 Tabula Muris Senis droplet Lung, from
 [figshare](https://figshare.com/articles/dataset/Tabula_Muris_Senis_Data_Objects/12654728):
 `tabula-muris-senis-droplet-processed-official-annotations-Lung.h5ad`, placed in
-`data/`. **Not committed**: it is large, not ours to redistribute, and it
-changes upstream.
+`data/Lung/` by `src/download.py` (md5 checked against figshare). **Not
+committed**: it is large, not ours to redistribute, and it changes upstream.
 
 | | |
 | --- | --- |
@@ -296,14 +320,16 @@ symbol of the submission, so hemoglobin beta is `Beta-s` rather than `Hbb-bs`.
 
 ### The Table
 
-`figure/lung_age_auroc.csv`, one row per cell type. Every column is an AUROC
-computed with whole mice held out, so the column differ only in what was changed
-about the input:
+Every output of a tissue goes to `figure/{Tissue}/`, and a table across tissue
+to `figure/atlas/`. `figure/{Tissue}/age_auroc.csv` has one row per cell type.
+Every column is an AUROC computed with whole mice held out, so the column differ
+only in what was changed about the input:
 
 | Column | Meaning |
 | --- | --- |
 | `logreg` | The main number: logistic regression, unseen mice |
-| `cross_age` | **The batch check.** Trained on some age group, tested on others |
+| `cross_age` | **The batch check.** Trained on some age group, tested on others; the tissue's hand-picked split if it has one |
+| `cross_age_all_splits` | The same check averaged over every valid split; the one compared across tissue |
 | `shuffled` | The same pipeline with age randomized between animal |
 | `males_only` | Rerun on male animal alone, so sex cannot stand in for age |
 | `no_ambient_genes` | Rerun with the ambient gene list dropped |
@@ -311,7 +337,7 @@ about the input:
 | `lgbm` | LightGBM instead of logistic regression |
 | `passes_batch_check` | `cross_age >= 0.7` |
 
-`figure/lung_age_report.csv` describes the main model instead of varying it:
+`age_report.csv` describes the main model instead of varying it:
 
 | Column | Meaning |
 | --- | --- |
@@ -321,11 +347,12 @@ about the input:
 | `acc_train` | Training accuracy, reported to show the size of the overfit |
 | `n_cells`, `n_mice` | What the row is actually based on |
 
-The gene table (`lung_top_genes_up_in_old.csv`, `..._up_in_young.csv`,
-`lung_aging_only_genes.csv`) give the strongest weight per cell type after
+The gene table (`top_genes_up_in_old.csv`, `..._up_in_young.csv`,
+`aging_only_genes.csv`) give the strongest weight per cell type after
 filtering, with a `flag` naming a circadian or dissociation gene. The clock
-table (`lung_clock_summary.csv`, `lung_clock_held_out_age.csv`) give error in
-month per cell type at every regularization strength tried.
+table (`clock_summary.csv`, `clock_held_out_age.csv`) give error in month per
+cell type at every regularization strength tried. `outlier_mice.csv` list every
+donor that supplies over half of a cell type, as a prompt to look.
 
 Everything in `figure/` is **regenerated, not committed**, including the CSV. A
 committed table would duplicate the notebook that wrote it and go stale the
@@ -364,13 +391,13 @@ reason, never on its own.
 
 | Figure | Shows |
 | --- | --- |
-| `lung_umap*.png` | The cell type, age and donor map, plus one donor at a time in colour against grey |
-| `lung_qc_by_*.png` | Gene and count per cell, by age and by donor |
-| `lung_composition_by_mouse.png` | One dot per animal: each cell type's fraction against age, coloured by sex |
-| `lung_monocyte_state.png`, `lung_state_*.png` | Marker group per donor, for the outlier investigation |
-| `lung_age_auroc.png` | AUROC against cross-age AUROC per cell type, with the shuffled control |
-| `lung_dev_vs_aging_*.png` | Each gene's change of development against its change of aging |
-| `lung_clock_*.png` | Predicted against true age in month, one point per cell and a median per animal |
+| `umap*.png` | The cell type, age and donor map, plus one donor at a time in colour against grey |
+| `qc_by_*.png` | Gene and count per cell, by age and by donor |
+| `composition_by_mouse.png` | One dot per animal: each cell type's fraction against age, coloured by sex |
+| `monocyte_state.png`, `state_*.png` | Marker group per donor, for the Lung outlier investigation |
+| `age_auroc.png` | AUROC against cross-age AUROC per cell type, with the shuffled control |
+| `dev_vs_aging_*.png` | Each gene's change of development against its change of aging |
+| `clock_*.png` | Predicted against true age in month, one point per cell and a median per animal |
 
 One donor per panel, plotted in colour against everything else in grey, is worth
 the extra figure: two similar default colour (30-M-2 and 30-M-5) are impossible
@@ -433,8 +460,9 @@ cell, and without a cap its cell alone would set the loss. The label is
 
 $$y_i = \mathbb{1}\left[a(d(i)) \in \text{OLD}\right],$$
 
-and a donor named in `EXCLUDE` for this cell type is dropped here, with the
-reason recorded next to it in `src/aging.py` rather than in a notebook.
+and a donor named in the tissue's `exclude` setting for this cell type is
+dropped here, with the reason recorded next to it in `TISSUE_SETTINGS` in
+`src/aging.py` rather than in a notebook.
 
 A cell type is modelled only with at least 50 cell and 2 donor **in both
 class**, so a cell type with 400 old cell from one animal and nothing young is
@@ -473,6 +501,16 @@ $$\text{train } \lbrace 1\text{m}, 18\text{m}, 21\text{m} \rbrace \to \text{test
 each split carrying both class, and the two AUROC averaged. The split is
 written so each side holds a young and an old group; since each age group is its
 own processing batch, a model leaning on batch has nothing to lean on here.
+
+That pair was chosen by hand for Lung's age. For any tissue, `cross_age_splits`
+enumerates every split of the same shape: one young age with a non-empty proper
+subset $S$ of the old age in training, the other young age with the rest in
+test,
+
+$$\text{train } \lbrace y_1 \rbrace \cup S \to \text{test } \lbrace y_2 \rbrace \cup (\text{OLD} \setminus S), \qquad \text{for every } y_1 \text{ and } S,$$
+
+twelve split for Lung, the two above among them. `cross_age_all_splits` averages
+all of them and is the column compared across tissue.
 
 A cell type passes when $\text{cross\_age} \ge 0.7$.
 
@@ -596,32 +634,41 @@ the output and why a cell type is reported with a verdict rather than a score.
 
 | File | Job |
 | --- | --- |
-| `src/aging.py` | Every shared function and every default. The one file to edit to change behaviour |
+| `src/aging.py` | Every shared function, every default and every per-tissue setting. The one file to edit to change behaviour |
+| `src/download.py` | Fetch the per-tissue file and the external table from figshare through its API, md5 checked; `--list` shows the size first |
+| `src/run_tissue.py` | Run notebook `02`–`05c` top to bottom for one or more tissue, saving each executed copy to `notebook/run/{Tissue}/` |
 | `src/strip_output.py` | Git clean filter: commit a notebook as code and markdown, without any output |
 | `notebook/01_scanpy_tutorial.ipynb` | The scanpy preprocessing and clustering tutorial, kept as a record of the learning step |
 | `notebook/02_explore.ipynb` | Age, donor, sex balance and cell type per donor; the provided UMAP |
 | `notebook/03_preprocess.ipynb` | Rebuild from count, QC, doublet, normalize, variable gene, PCA, Leiden, UMAP |
-| `notebook/04_composition.ipynb` | Cell type fraction per donor against age, and the outlier donor investigation |
+| `notebook/04_composition.ipynb` | Donor that dominate a cell type, then cell type fraction per donor against age |
+| `notebook/04b_lung_outlier.ipynb` | Lung only: is donor 30-M-2 sick? The investigation behind its exclusion |
 | `notebook/05a_classifier.ipynb` | Young against old per cell type, every control, and the batch check |
 | `notebook/05b_genes.ipynb` | The gene behind each model, filtered and flagged; development against aging |
 | `notebook/05c_clock.ipynb` | Ridge clock in month, three strength, and a held-out age group |
+| `notebook/06_survey.ipynb` | Across every downloaded tissue: donor per age, sex balance, which cell type are classifiable and batch-testable, donor shared between tissue |
+
+Notebook `02`–`05c` run per tissue; `06` onward work across tissue.
 
 Inside `src/aging.py`:
 
 | Group | Function |
 | --- | --- |
-| Setting | `AGE_MONTHS`, `YOUNG`, `OLD`, `ADULT`, `AMBIENT`, `TECHNICAL_PATTERN`, `DISSOCIATION`, `CIRCADIAN`, `MYELOID`, `EXCLUDE`, `main_kw` |
+| Setting | `AGE_MONTHS`, `YOUNG`, `OLD`, `ADULT`, `AMBIENT`, `TECHNICAL_PATTERN`, `DISSOCIATION`, `CIRCADIAN` |
+| Per tissue | `TISSUE_SETTINGS`, `settings`, `paths`, `main_kw`, `ages_in`, `flag_outlier_mice`, `slug` |
 | Gene filter | `celltype_means`, `foreign_genes`, `feature_mask` |
 | Data prep | `prep`, `usable_cell_types` |
-| Classifier | `logreg`, `age_eval`, `age_auc`, `cross_age_auc`, `top_genes` |
+| Classifier | `logreg`, `age_eval`, `age_auc`, `cross_age_splits`, `cross_age_auc`, `top_genes` |
 | Clock | `clock_eval`, `clock_summary`, `held_out_age` |
 | Trajectory | `trajectories`, `label_patterns`, `pattern_top` |
 
 | Folder | Holds |
 | --- | --- |
-| `data/` | The atlas and the intermediate `.h5ad`. Not tracked by git |
-| `figure/` | Every plot and result table. Regenerated by a run, not tracked by git |
+| `data/{Tissue}/` | The official file, `raw.h5ad` and `processed.h5ad` of one tissue. Not tracked by git |
+| `data/external/` | Table and dataset from other study, for comparison and replication. Not tracked by git |
+| `figure/{Tissue}/`, `figure/atlas/` | Every plot and result table, per tissue and across tissue. Regenerated by a run, not tracked by git |
 | `notebook/` | The analysis, one notebook per phase |
+| `notebook/run/` | Executed copy written by `run_tissue.py`. Not tracked by git |
 | `src/` | The shared code |
 
 
@@ -831,11 +878,12 @@ Every claim above depends on phase 2 to 4 having found these first:
 2. **The ambient filter**, per the open problem above: compare the fraction of
    cell expressing rather than the mean, or test whether a candidate ambient gene
    tracks its source cell type within the same donor.
-3. **More tissue.** Parameterize the tissue name, then run the pipeline on three
-   to five more droplet tissue (Kidney, Liver, Thymus) and report one cell type ×
-   tissue table of which signal pass the batch check in more than one organ. The
-   limit to know going in: more Tabula Muris Senis tissue add cell, not
-   independent animal or batch.
+3. **More tissue.** The tissue name is now a parameter and Lung reproduces
+   exactly under it. Next: survey every droplet tissue (`06_survey`), run the
+   pipeline on each testable one, and report one cell type × tissue table of
+   which signal pass the batch check in more than one organ. The limit to know
+   going in: more Tabula Muris Senis tissue add cell, not independent animal or
+   batch.
 4. **Pseudobulk differential expression** (PyDESeq2) with the animal as the
    sample, for the cell type that pass.
 5. **A design where age is not tied to batch**, which is the only real fix: a
