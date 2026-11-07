@@ -20,3 +20,11 @@ dependencies:
       - jupyterlab
       - ipykernel
       - nbdime
+      # cross-tissue modules (11-16)
+      - decoupler        # pathway, transcription factor and miRNA activity
+      - liana            # ligand-receptor communication
+      - mofapy2          # multi-omics factor analysis
+      - pysindy          # sparse identification of nonlinear dynamics
+      - moscot           # optimal transport between ages (pulls jax)
+      - torchdiffeq      # neural ODE
+      # CPU PyTorch: pip install torch --index-url https://download.pytorch.org/whl/cpu

@@ -401,22 +401,56 @@ def age_auc(adata, ct, **kw):
     return np.nan if r is None else r["auroc_cell"]
 
 
-def cross_age_auc(adata, ct, make_model=logreg, splits=None, **prep_kw):
-    """Train on some age groups, test on different ones (batch check).
-    splits=None uses every split from cross_age_splits() for the ages this cell type has;
-    pass a tissue's hand-picked splits (settings(tissue)["cross_age_splits"]) to reproduce them.
-    NaN means not testable (no split with young and old on both sides)."""
+def cross_age_scores(adata, ct, make_model=logreg, splits=None, **prep_kw) -> list:
+    """The held-out scores behind the cross-age check: one DataFrame (y, score, mouse) per
+    usable split. splits=None uses every split from cross_age_splits() for the ages this
+    cell type has; pass a tissue's hand-picked splits (settings(tissue)["cross_age_splits"])
+    to reproduce them."""
     X, y, mice, ages = prep(adata, ct, return_ages=True, **prep_kw)
     if splits is None:
         splits = cross_age_splits(set(ages))
-    aucs = []
+    parts = []
     for train_ages, test_ages in splits:
         tr, te = np.isin(ages, list(train_ages)), np.isin(ages, list(test_ages))
         if len(set(y[tr])) < 2 or len(set(y[te])) < 2:
             continue
         model = make_model().fit(X[tr], y[tr])
-        aucs.append(roc_auc_score(y[te], model.predict_proba(X[te])[:, 1]))
-    return float(np.mean(aucs)) if aucs else np.nan
+        parts.append(pd.DataFrame({"y": y[te], "score": model.predict_proba(X[te])[:, 1], "mouse": mice[te]}))
+    return parts
+
+
+def cross_age_auc(adata, ct, make_model=logreg, splits=None, **prep_kw):
+    """Train on some age groups, test on different ones (batch check): the mean AUROC over
+    splits. NaN means not testable (no split with young and old on both sides)."""
+    parts = cross_age_scores(adata, ct, make_model=make_model, splits=splits, **prep_kw)
+    return float(np.mean([roc_auc_score(p["y"], p["score"]) for p in parts])) if parts else np.nan
+
+
+def bootstrap_cross_age(parts, n_boot=1000, level=0.9, seed=0):
+    """Interval for the cross-age AUROC by resampling whole test mice (within each class,
+    within each split; the same draw is not shared across splits).
+
+    Only the uncertainty from *which* test mice were seen is captured; the training mice are
+    held fixed, so the true uncertainty is larger. A class with one test mouse contributes
+    no spread. Returns (low, high), or (nan, nan) without parts."""
+    if not parts:
+        return np.nan, np.nan
+    rng = np.random.default_rng(seed)
+    prepared = []
+    for p in parts:
+        by_mouse = {m: (g["y"].to_numpy(), g["score"].to_numpy()) for m, g in p.groupby("mouse")}
+        cls = {c: [m for m, (yy, _) in by_mouse.items() if yy[0] == c] for c in (0, 1)}
+        prepared.append((by_mouse, cls))
+    stats = np.empty(n_boot)
+    for b in range(n_boot):
+        aucs = []
+        for by_mouse, cls in prepared:
+            pick = [m for c in (0, 1) for m in rng.choice(cls[c], len(cls[c]), replace=True)]
+            yy = np.concatenate([by_mouse[m][0] for m in pick])
+            ss = np.concatenate([by_mouse[m][1] for m in pick])
+            aucs.append(roc_auc_score(yy, ss))
+        stats[b] = np.mean(aucs)
+    return tuple(np.quantile(stats, [(1 - level) / 2, 1 - (1 - level) / 2]))
 
 
 def top_genes(adata, ct, features, n=20, **prep_kw):
@@ -456,6 +490,21 @@ def technical_adata(adata) -> sc.AnnData:
                       var=pd.DataFrame(index=feats.columns))
     tech.var["highly_variable"] = True
     return tech
+
+
+def sex_adata(adata) -> sc.AnnData:
+    """Same cells, one feature: the donor's sex (1 = female). Run through cross_age_auc like
+    expression. In TMS sex is tied to age group (e.g. 21m all female, 24m and 30m all male),
+    so if sex alone passes the cross-age check, the row's age signal can't be told apart
+    from a sex difference."""
+    import anndata as ad
+    f = adata.obs["sex"].astype(str).eq("female").astype(float).to_numpy()[:, None]
+    out = ad.AnnData(f, obs=adata.obs.copy(), var=pd.DataFrame(index=["female"]))
+    out.var["highly_variable"] = True
+    return out
+
+
+SEX_PATTERN = r"^(Xist|Tsix|Ddx3y|Eif2s3y|Kdm5d|Uty)$"   # sex-chromosome genes (also in TECHNICAL_PATTERN)
 
 
 # ----------------------------------------------------------------------------
