@@ -459,6 +459,59 @@ def technical_adata(adata) -> sc.AnnData:
 
 
 # ----------------------------------------------------------------------------
+# Pseudobulk (mice as samples)
+# ----------------------------------------------------------------------------
+def pseudobulk(adata, ct, drop_mice=None, min_cells=20, ages=None):
+    """Raw counts of one cell type summed per mouse (mice with >= min_cells only).
+
+    Returns (counts: mice x genes DataFrame of ints, meta: DataFrame with age, months,
+    group "old"/"young", sex, n_cells)."""
+    ages = (YOUNG + OLD) if ages is None else ages
+    obs = adata.obs
+    mask = (obs.cell_ontology_class == ct) & obs.age.isin(ages)
+    if drop_mice:
+        mask &= ~obs["mouse.id"].isin(drop_mice)
+    sub = adata[mask.to_numpy()]
+    n = sub.obs["mouse.id"].astype(str).value_counts()
+    keep = n.index[n >= min_cells]
+    sub = sub[sub.obs["mouse.id"].astype(str).isin(keep).to_numpy()]
+    pb = sc.get.aggregate(sub, by="mouse.id", func="sum", layer="counts")
+    m = pb.layers["sum"]
+    m = m.toarray() if hasattr(m, "toarray") else np.asarray(m)
+    mice = pb.obs["mouse.id"].astype(str).to_numpy()
+    counts = pd.DataFrame(np.round(m).astype(np.int64), index=mice, columns=pb.var_names)
+    first = sub.obs.drop_duplicates("mouse.id").set_index(sub.obs.drop_duplicates("mouse.id")["mouse.id"].astype(str))
+    meta = pd.DataFrame({"age": first.loc[mice, "age"].astype(str).to_numpy(),
+                         "sex": first.loc[mice, "sex"].astype(str).to_numpy(),
+                         "n_cells": n.loc[mice].to_numpy()}, index=mice)
+    meta["months"] = meta["age"].map(AGE_MONTHS)
+    meta["group"] = np.where(meta["age"].isin(OLD), "old", "young")
+    return counts, meta
+
+
+def deseq(counts: pd.DataFrame, meta: pd.DataFrame, design: str = "~group",
+          contrast=("group", "old", "young"), min_total: int = 10) -> pd.DataFrame:
+    """PyDESeq2 on a pseudobulk matrix (genes with < min_total counts dropped).
+    Returns log2FoldChange, lfcSE, pvalue, padj and baseMean per gene."""
+    from pydeseq2.dds import DeseqDataSet
+    from pydeseq2.ds import DeseqStats
+    counts = counts.loc[:, counts.sum(axis=0) >= min_total]
+    dds = DeseqDataSet(counts=counts, metadata=meta, design=design, quiet=True)
+    dds.deseq2()
+    stats = DeseqStats(dds, contrast=list(contrast), quiet=True)
+    stats.summary()
+    return stats.results_df
+
+
+def log_cpm_change(counts: pd.DataFrame, meta: pd.DataFrame) -> pd.Series:
+    """Fast per-gene effect: mean log2(CPM + 1) of old mice minus young mice.
+    Used where DESeq2 is too slow to repeat (permutation nulls)."""
+    cpm = np.log2(counts.div(counts.sum(axis=1), axis=0) * 1e6 + 1)
+    old = meta["group"].eq("old").to_numpy()
+    return cpm[old].mean() - cpm[~old].mean()
+
+
+# ----------------------------------------------------------------------------
 # Age clock (regression)
 # ----------------------------------------------------------------------------
 def clock_eval(adata, ct, alpha=100.0, ages=None, **prep_kw):

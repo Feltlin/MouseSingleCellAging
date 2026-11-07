@@ -67,11 +67,21 @@ is not batch-only everywhere, though: B, T and macrophage in limb muscle pass.
 A technical-only control shows that one tissue, bladder, passes partly on
 processing difference that the age-group check cannot see.
 
+**What replicates in another lab.** Tested on an independent study (Kimmel et
+al. 2019), every one of 19 TMS model ranks old cell above young, weakly, and the
+batch check does not predict which transfer best. Gene by gene, the **complement
+rise** in stromal cell and the **MHC class I rise** shared across cell type and
+organ hold up, while the p21 rise does not, and half of the atlas's published
+"global aging gene" (the falling half) fail with the animal as the sample.
+Aging is mostly private to each cell type: 7.8% of row pair agree beyond what
+shared animal produce.
+
 **The worked example, mouse lung.** Lung **fibroblast** and **adventitial
-cell** carry an age signal that survives every control (cross-age AUROC 0.95 and
-0.94). In the old fibroblast the gene that rise include ***Cdkn1a*** (p21, a
-core senescence gene) and the complement gene *C3* and *Cfb*, while collagen
-fall. Lung immune cell type score well on unseen mice (AUROC up to 0.91) and
+cell** carry an age signal that survives every control inside the atlas
+(cross-age AUROC 0.95 and 0.94). In the old fibroblast the gene that rise
+include *Cdkn1a* (p21) and the complement gene *C3* and *Cfb*, while collagen
+fall; of these, complement and the adventitial collagen loss replicate in
+another lab, and p21 and the fibroblast model as a whole do not. Lung immune cell type score well on unseen mice (AUROC up to 0.91) and
 then drop to chance on unseen age group, which is the finding that matters
 methodologically: on an atlas where each age group was processed separately,
 ordinary cross-validation cannot tell aging from batch.
@@ -704,6 +714,10 @@ seen:
 | `notebook/05b_genes.ipynb` | The gene behind each model, filtered and flagged; development against aging |
 | `notebook/05c_clock.ipynb` | Ridge clock in month, three strength, and a held-out age group |
 | `notebook/06_survey.ipynb` | Across every downloaded tissue: donor per age, sex balance, which cell type are classifiable and batch-testable, donor shared between tissue |
+| `notebook/07_atlas.ipynb` | Every tissue's result in one table: verdict, compartment, technical-only and dominant-donor check, heatmap, structural against immune |
+| `notebook/08_senescence.ipynb` | SenMayo, p21 and p16 per animal in every row, trend with age and its stability |
+| `notebook/09_pseudobulk.ipynb` | DESeq2 per row with the animal as sample, agreement between row against a shared-mouse null, replication of the published global aging gene |
+| `notebook/10_replication.ipynb` | Train on this atlas, test on Kimmel et al. 2019; key gene per mouse; is the p21 rise handling stress |
 
 Notebook `02`–`05c` run per tissue; `06` onward work across tissue.
 
@@ -712,10 +726,13 @@ Inside `src/aging.py`:
 | Group | Function |
 | --- | --- |
 | Setting | `AGE_MONTHS`, `YOUNG`, `OLD`, `ADULT`, `AMBIENT`, `TECHNICAL_PATTERN`, `DISSOCIATION`, `CIRCADIAN` |
-| Per tissue | `TISSUE_SETTINGS`, `settings`, `paths`, `main_kw`, `ages_in`, `flag_outlier_mice`, `slug` |
-| Gene filter | `celltype_means`, `foreign_genes`, `feature_mask` |
+| Per tissue | `TISSUE_SETTINGS`, `settings`, `paths`, `main_kw`, `ages_in`, `flag_outlier_mice`, `slug`, `COMPARTMENT`, `compartment` |
+| Gene set | `GENE_ALIASES`, `load_gene_set` |
+| Gene filter | `celltype_means`, `ambient_cutoff`, `foreign_genes`, `feature_mask` |
 | Data prep | `prep`, `usable_cell_types` |
 | Classifier | `logreg`, `age_eval`, `age_auc`, `cross_age_splits`, `cross_age_auc`, `top_genes` |
+| Control | `technical_adata` |
+| Pseudobulk | `pseudobulk`, `deseq`, `log_cpm_change` |
 | Clock | `clock_eval`, `clock_summary`, `held_out_age` |
 | Trajectory | `trajectories`, `label_patterns`, `pattern_top` |
 
@@ -733,7 +750,7 @@ Inside `src/aging.py`:
 
 The question across the atlas: in which cell type, in which organ, does gene
 expression carry an age signal that survives the batch check? Section 10.1 to
-10.3 answer it across tissue; 10.4 onward is the lung, the tissue the pipeline
+10.6 answer it across tissue; 10.7 onward is the lung, the tissue the pipeline
 was built on, as a worked example of every step.
 
 ### 10.1 Which Tissue Can Be Tested
@@ -824,7 +841,85 @@ endothelium from partial (0.53) to batch driven (0.49) without 30-M-2. **Donor
 30-M-2**, excluded from the lung myeloid cell type, also dominates cell type in
 heart and marrow, which fits a body-wide condition in that animal.
 
-### 10.4 Lung: Age Signal Per Cell Type
+### 10.4 Senescence Across Tissue
+
+Each cell scored with SenMayo (115 of its 117 mouse gene present), averaged per
+animal, trend against age in month per row (`08_senescence`). A trend is
+`stable` when it keeps its sign with any one age group left out.
+
+| Measure | Robust structural row, ρ > 0 | BH < 0.1 | Median ρ | Read as |
+| --- | --- | --- | --- | --- |
+| SenMayo score | 8 of 15 | 0 | 0.00 | no age trend |
+| SenMayo-high fraction | 9 of 15 | 0 | 0.20 | weak, not significant |
+| ***Cdkn1a*** (p21) | **14 of 15**, all 5 tissue | 5 | **0.45** | rises inside this atlas (but see 10.6) |
+| *Cdkn2a* (p16) | — | — | — | detected in 0.8% of cell: unusable per cell |
+
+The composite score does not move: most SenMayo gene are secreted factor,
+weakly captured per cell, and averaging 115 of them dilutes the few that do.
+p21 alone rises in structural cell of every tissue that has one: bladder
+endothelium ρ 0.95 (BH 0.03), lung fibroblast 0.78 (0.04), lung adventitial 0.77
+(0.09), kidney collecting duct 0.73 (0.05), tongue basal epithelium 0.72,
+muscle endothelium 0.66. The kidney give seven row from the same animal, so the
+honest count is five tissue of five, not fourteen result.
+
+### 10.5 Gene With The Animal As Sample
+
+Pseudobulk DESeq2 on 55 row, animal as sample (`09_pseudobulk`):
+
+| Question | Result | Read as |
+| --- | --- | --- |
+| Gene changed per row (padj < 0.1, filtered) | robust median 175, other 58 | the robust row also carry more testable change |
+| Row pair agreeing beyond a shared-mouse null | 116 of 1,485 (7.8%; 5% by chance) | **aging is mostly private to each cell type** |
+| Correlation of effect, between tissue | median 0.06 (null 95th percentile 0.22) | no general program |
+| Correlation of effect, within one tissue | median 0.28 (null 0.39) | what shared animal produce on their own |
+| Published "global aging gene", up half | 60 of 93 replicate (p = 0.007) | **holds**: MHC class I and II lead |
+| Published "global aging gene", down half | 68 of 190 replicate (p = 0.0001, below chance) | **does not hold**; ribosomal gene reverse |
+
+The null keeps the shared-mouse structure: the 23 animal's old/young label are
+permuted once and applied to every tissue alike, so two row can only beat it by
+agreeing about age, not about which animal they came from.
+
+The shared core across four or five tissue is small and coherent: MHC class I
+(*H2-D1*, *H2-K1*, *B2m*) and inflammation (*Tnf*, *Casp1*, *Casp4*, *Gbp3*) up.
+*H2-D1* and *H2-K1* rise in all 22 robust row, and they are also the top
+replicating gene of the published list (Zhang et al. 2021, tested on cell). Of
+that list, 47 of 330 gene have no direction even in its own data and are left
+out. *Tsc22d3* falls in five tissue but is glucocorticoid responsive, so it is
+flagged as possible time-of-day signal. *Cdkn2a* (p16), invisible per cell,
+rises in 6 row across 4 tissue once count are summed per animal (log2FC
+1.8–5.2, low count).
+
+### 10.6 Replication In Another Lab
+
+Kimmel et al. 2019 profiled lung, kidney and spleen of young (7–8 month) and
+old (about 21 month) male mice in another lab. Each TMS row was matched to a
+Kimmel cell type (19 row, label checked by marker: TMS lung fibroblast =
+*Npnt*/*Inmt*/*Tcf21* stromal cell, adventitial = *Dcn*/*Pi16*), trained on TMS
+and tested on Kimmel unchanged (`10_replication`).
+
+| Question | Result | Read as |
+| --- | --- | --- |
+| Does the direction of aging transfer? | 19 of 19 row score old above young; cell AUROC 0.51–0.76; per-mouse 1.00 in 13 | a weak age signal is shared across lab |
+| Does the TMS clock transfer? | old placed older in 19 of 19, compressed (0.7–5 month vs ~14) | yes, in order, not in scale |
+| Does the TMS batch check predict transfer? | ρ = 0.17 (p = 0.48); robust 0.64 vs other 0.59 | **no** |
+| Lung fibroblast, the strongest TMS row | 0.51 (0.52 without the pooled 3m sample) | **does not transfer** |
+| Complement (*C3*, *Cfb*) | *C3* +0.61 in every old adventitial cell; *Cfb* +0.43 in every old mesangial cell | **replicates** |
+| p21 (*Cdkn1a*) in structural cell | lung fibroblast −0.03, adventitial −0.46, AT2 −0.21 | **does not replicate** |
+
+**p21 is therefore not called an aging marker.** Inside TMS its rise survives
+removing each animal's dissociation-stress level (lung adventitial ρ 0.86,
+p = 0.003), so it is not handling. But Kimmel's young animal are 7–8 month and
+TMS has none between 3 and 18 month: a rise between 3 and 7 month, late
+maturation rather than aging, fits both dataset, and neither can rule it out.
+In Kimmel, p21 instead rises in old lung immune cell (classical monocyte +0.34,
+CD4 T +0.30), the reverse of the TMS pattern.
+
+**What the batch check is, after this.** It removes TMS-specific artifact (the
+technical and dominant-animal case of 10.3 are real), but it does not rank which
+signal travel: the immune cell it fails carry a weak age signal that another lab
+reproduces. It is a filter, not a measure of portability.
+
+### 10.7 Lung: Age Signal Per Cell Type
 
 The lung, on the 16 animal and 24,490 cell of [section 5](#5-input). Two
 cross-age column: the hand-picked pair of split the lung was first tested with,
@@ -871,7 +966,7 @@ Neutrophil are voided by their own control: AUROC 0.97 with a shuffled score of
 0.70 means this pipeline can reach 0.70 on that cell type from noise alone, so
 0.97 cannot be read as signal.
 
-### 10.5 Lung: Aging Gene In The Cell Type That Pass
+### 10.8 Lung: Aging Gene In The Cell Type That Pass
 
 Read only from a filtered model with AUROC ≥ 0.8 and a passing batch check:
 
@@ -883,11 +978,14 @@ Read only from a filtered model with AUROC ≥ 0.8 and a passing batch check:
 
 Three thing in that table:
 
-- ***Cdkn1a*** (p21) rises in old fibroblast and old type II pneumocyte. It is a
-  core senescence gene, and in the separate trajectory analysis it changes in
-  aging ($\Delta_{\text{age}} = +0.54$) and not in development, so it is not a
-  maturation effect. The complement gene *C3* and *Cfb* rising alongside it fit
-  inflammaging in a stromal cell.
+- ***Cdkn1a*** (p21) rises in old fibroblast and old type II pneumocyte, and in
+  the trajectory analysis it changes between 3m and old
+  ($\Delta_{\text{age}} = +0.54$) and not between 1m and 3m. That rules out
+  early maturation but not a rise between 3 and 7 month, and in another lab it
+  does not rise from 7 to 21 month ([section 10.6](#106-replication-in-another-lab)),
+  so it is reported as an observation, not a senescence result. The complement
+  gene *C3* and *Cfb* rising alongside it **do** replicate, in adventitial
+  fibroblast and kidney mesangial cell, and fit inflammaging in a stromal cell.
 - **Collagen and matrix gene fall with age** in both stromal cell type
   (*Col1a1*, *Col3a1*, *Col6a1*, *Sparc*, *Mfap5*), which matches the known
   decline of extracellular matrix production. In an immune cell type the same
@@ -905,7 +1003,7 @@ so the young and old animal were very likely collected at a different hour. This
 is a batch finding, and the sort of thing that would otherwise be reported as an
 aging gene.
 
-### 10.6 Lung: Cell Composition With Age
+### 10.9 Lung: Cell Composition With Age
 
 Per-donor fraction against age, over the 13 animal left after the outlier sample
 are removed, Spearman:
@@ -929,7 +1027,7 @@ points at the known shift from naive toward memory T cell. So part of the CD8
 "age signal" is a change in which CD8 subtype is present, not every CD8 cell
 aging alike.
 
-### 10.7 Lung: The Clock
+### 10.10 Lung: The Clock
 
 Ridge regression on adult animal, leave one donor out, at $\alpha = 100$:
 
@@ -958,7 +1056,7 @@ batch rather than resolving age inside the old range. The clock works as a
 coarse young-to-old estimator on this data and no further, and the reason is the
 study design rather than the model.
 
-### 10.8 Lung: What The Audit Found First
+### 10.11 Lung: What The Audit Found First
 
 Every claim above depends on phase 2 to 4 having found these first:
 
@@ -989,7 +1087,7 @@ Every claim above depends on phase 2 to 4 having found these first:
   filtered by the consortium, so a `n_genes_by_counts > 300` cut removes exactly
   one cell.
 
-### 10.9 What This Shows
+### 10.12 What This Shows
 
 - **A framework.** Mouse-held-out AUROC plus a cross-age batch check, a
   donor-permuted control and a technical-only control separates a real age
@@ -999,9 +1097,15 @@ Every claim above depends on phase 2 to 4 having found these first:
 - **An atlas finding.** Across nine organ, a robust age signal sits mostly in
   **structural cell**, and immune aging is visible in some organ (limb muscle,
   spleen) and not in other (lung, marrow).
-- **A lung finding.** The clearest aging signature in the mouse lung is in the
-  **stromal cell**: senescence (*Cdkn1a*) and complement gene rising while matrix
-  gene fall, holding up on animal and age group the model never saw.
+- **A replication finding.** In another lab the direction of aging transfers in
+  every matched cell type, weakly, and the batch check does not predict which
+  transfer best. What holds gene by gene is **complement up in stromal cell** and
+  **MHC class I up across cell type**; what does not is the p21 rise and the
+  falling half of the published global aging gene.
+- **A lung finding.** Inside the atlas, the clearest aging signature in the
+  mouse lung is in the **stromal cell**: complement gene rising while matrix gene
+  fall, holding up on animal and age group the model never saw, and the
+  complement part also in another lab.
 - **A limit worth naming.** The obstacle is the study design, not the model
   class: with age tied to batch and 23 animal across the whole atlas, no amount
   of model capacity recovers what the experiment did not separate. LightGBM
@@ -1037,24 +1141,34 @@ Every claim above depends on phase 2 to 4 having found these first:
   a floor to clear, not a calibrated p-value; a few hundred permutation would be
   needed for that.
 - **A gene weight is interpretation, not a test.** The weight come from a model
-  fit on all animal, and the composition trend are per-cell-type correlation over
-  13 animal. Neither is a differential expression test; the pseudobulk of phase 7
-  is what would give a p-value with the animal as the sample.
+  fit on all animal; the pseudobulk test of
+  [section 10.5](#105-gene-with-the-animal-as-sample) is the one with the animal
+  as sample, and with 5 to 17 animal per row it has little power for a small
+  change.
+- **The age gap leaves a window unsampled.** The atlas has no animal between 3
+  and 18 month, and the replication study's young animal are 7–8 month. A change
+  that happens in that window, such as the possible p21 rise, can be neither
+  called aging nor ruled out.
+- **The replication is small.** Kimmel et al. 2019 has 3 to 4 young and 3 old
+  male animal per tissue, filtered to about 10,000 gene (no *Cdkn2a*), and its
+  paper does not say whether young and old animal shared processing day.
 - **The clock does not resolve age within the old range**, for the batch reason
-  in [section 10.7](#107-lung-the-clock).
+  in [section 10.10](#1010-lung-the-clock).
 
 ### Next Step
 
-1. **Senescence scoring** with SenMayo (Saul et al. 2022; 115 of its 117 mouse
-   gene are in the atlas), per animal, on the 26 robust age-signal row, with the
-   failing immune row for contrast.
-2. **Pseudobulk differential expression** (PyDESeq2) with the animal as the
-   sample, for the robust row; which gene move the same way in the same lineage
-   across organ, and how many of the atlas's published "global aging gene"
-   (Zhang et al. 2021) hold up with animal as the sample.
-3. **Replication in an independent study.** Kimmel et al. 2019 profiled young
-   and old mouse lung, kidney and spleen in another lab; a model trained here and
-   tested there cannot be reading this atlas's batch.
+1. **Model comparison judged on transfer.** Elastic net, a per-animal
+   pseudobulk classifier, attention-based multiple-instance learning (animal as a
+   bag of cell), foundation-model embedding with a linear probe, and ordinal
+   regression for the clock, ranked by cross-age and Kimmel transfer AUROC rather
+   than by the held-out AUROC that batch inflates.
+2. **Mechanism.** Pathway and transcription-factor activity on the pseudobulk
+   result (does an interferon or NF-κB regulator sit behind the shared MHC class
+   I rise?), ligand–receptor change between old stromal and immune cell, and a
+   check of the replicating gene against human aging in GTEx.
+3. **Dynamics.** Fit per-gene trajectory and low-dimensional ODE model to the
+   per-animal data, and test them by forecasting a held-out age group, the same
+   test the clock fails between 18 and 21 month.
 4. **A design where age is not tied to batch**, which is the only real fix: a
    large human cohort with many donor pooled across run (OneK1K, CELLxGENE
    Census), where the linear baseline here can be compared against an MLP, an

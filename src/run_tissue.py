@@ -51,8 +51,13 @@ def run(tissue: str, start: str | None = None, timeout: int = 3600) -> bool:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("tissues", nargs="+")
-    parser.add_argument("--from", dest="start", choices=NOTEBOOKS, help="first notebook to run")
+    parser.add_argument("--from", dest="start", help="first notebook to run, e.g. 05a or 05a_classifier")
     args = parser.parse_args()
+    if args.start:
+        match = [n for n in NOTEBOOKS if n.startswith(args.start)]
+        if len(match) != 1:
+            parser.error(f"--from {args.start!r} matches {match or 'nothing'}; choose from {NOTEBOOKS}")
+        args.start = match[0]
     results = {t: run(t, args.start) for t in args.tissues}
     print("\nsummary:", {t: "ok" if r else "failed" for t, r in results.items()})
     sys.exit(0 if all(results.values()) else 1)
