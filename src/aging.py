@@ -34,7 +34,8 @@ ADULT = ["3m", "18m", "21m", "24m", "30m"]
 # Genes likely to come from ambient RNA or blood rather than the cell itself
 AMBIENT = ["S100a8", "S100a9", "Lyz2", "Ngp", "Camp", "Ltf", "Retnlg",
            "Hba-a1", "Hba-a2", "Hbb-bs", "Hbb-bt", "Beta-s",   # TMS names Hbb "Beta-s"
-           "Scgb1a1"]   # airway secretory gene, slips past foreign_genes (see 05b findings)
+           "Scgb1a1"]   # airway secretory gene; the linear foreign_genes rule now catches it too,
+                        # kept here so the 05a no_ambient_genes column stays comparable
 
 # Technical and sex genes: ribosomal proteins (incl. pseudogenes), rRNA, Malat1,
 # X/Y-linked sex genes, hemoglobin
@@ -46,6 +47,19 @@ DISSOCIATION = ["Fos", "Fosb", "Jun", "Junb", "Jund", "Egr1", "Atf3", "Ier2", "I
 
 # Circadian clock genes: differences point to different times of day at collection (batch)
 CIRCADIAN = ["Dbp", "Nr1d1", "Nr1d2", "Per1", "Per2", "Per3", "Arntl", "Cry1", "Tef"]
+
+# Current symbol -> the older symbol TMS uses (TMS was annotated before these renames)
+GENE_ALIASES = {"Bex3": "Ngfrap1", "Hbb-bs": "Beta-s"}
+
+
+def load_gene_set(path, adata) -> tuple[list, list]:
+    """Read a one-gene-per-line file, map current symbols to TMS's older ones,
+    and return (genes present in adata, genes missing)."""
+    genes = [g.strip() for g in Path(path).read_text().splitlines() if g.strip()]
+    mapped = [GENE_ALIASES.get(g, g) for g in genes]
+    present = [g for g in mapped if g in adata.var_names]
+    missing = [g for g, m in zip(genes, mapped) if m not in adata.var_names]
+    return present, missing
 
 # ----------------------------------------------------------------------------
 # Per-tissue settings
@@ -78,6 +92,40 @@ TISSUE_SETTINGS = {
         "example_clock": "alveolar macrophage",
     },
 }
+
+# Compartment of each TMS cell type label, for comparing tissues (07_atlas). Ambiguous labels
+# are checked against marker genes in 07_atlas before they are counted; "other" is not compared.
+_COMPARTMENT_LISTS = {
+    "stromal": ["adventitial cell", "bronchial smooth muscle cell", "fibroblast of cardiac tissue",
+                "fibroblast of lung", "kidney mesangial cell", "mesenchymal stem cell",
+                "mesenchymal stem cell of adipose", "smooth muscle cell", "stromal cell",
+                "bladder cell"],                       # TMS "bladder cell" = bladder mesenchyme (checked in 07)
+    "endothelial": ["endocardial cell", "endothelial cell", "endothelial cell of coronary artery",
+                    "endothelial cell of hepatic sinusoid", "fenestrated cell",
+                    "kidney cortex artery cell"],       # checked in 07
+    "epithelial": ["basal cell", "basal cell of epidermis", "bladder urothelial cell", "brush cell",
+                   "epithelial cell of proximal tubule", "hepatocyte", "keratinocyte",
+                   "kidney collecting duct principal cell", "kidney distal convoluted tubule epithelial cell",
+                   "kidney loop of Henle ascending limb epithelial cell",
+                   "kidney loop of Henle thick ascending limb epithelial cell",
+                   "kidney proximal convoluted tubule epithelial cell", "podocyte",
+                   "luminal epithelial cell of mammary gland", "type II pneumocyte"],
+    "immune": ["B cell", "CD4-positive, alpha-beta T cell", "CD8-positive, alpha-beta T cell", "Kupffer cell",
+               "Langerhans cell", "NK cell", "T cell", "alveolar macrophage", "classical monocyte",
+               "intermediate monocyte", "non-classical monocyte", "granulocyte", "leukocyte", "macrophage",
+               "mature NK T cell", "monocyte", "myeloid dendritic cell", "naive B cell", "naive T cell",
+               "neutrophil", "plasma cell", "immature B cell"],
+    "progenitor": ["erythroblast", "granulocytopoietic cell", "hematopoietic precursor cell",
+                   "megakaryocyte-erythroid progenitor cell", "precursor B cell", "proerythroblast",
+                   "promonocyte", "skeletal muscle satellite cell"],
+}
+COMPARTMENT = {ct: comp for comp, cts in _COMPARTMENT_LISTS.items() for ct in cts}
+
+
+def compartment(ct: str) -> str:
+    """Compartment of a cell type label ("other" if unlisted, e.g. cardiomyocyte, Schwann cell)."""
+    return COMPARTMENT.get(ct, "other")
+
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -143,24 +191,73 @@ def flag_outlier_mice(adata, share: float = 0.5, min_cells: int = 100) -> pd.Dat
 # Gene filtering
 # ----------------------------------------------------------------------------
 def celltype_means(adata) -> pd.DataFrame:
-    """Mean log-expression of every gene in every cell type (cell types x genes)."""
-    pb = sc.get.aggregate(adata, by="cell_ontology_class", func="mean")
-    m = pb.layers["mean"]
-    m = m.toarray() if hasattr(m, "toarray") else np.asarray(m)
-    return pd.DataFrame(m, index=pb.obs["cell_ontology_class"].astype(str), columns=pb.var_names)
+    """Per-cell-type gene means, and the tissue's ambient cutoff (see ambient_cutoff).
+
+    .log     mean log-expression (cell types x genes), used to find a gene's source cell type
+    .linear  mean normalized expression (counts per 10k, undoing log1p), used for the ratio
+    .cutoff  linear ratio below which a gene counts as ambient in a cell type
+    """
+    cts = adata.obs["cell_ontology_class"].astype(str).to_numpy()
+    names = sorted(set(cts))
+    X = adata.X.tocsr() if hasattr(adata.X, "tocsr") else np.asarray(adata.X)
+    lin = X.copy()
+    if hasattr(lin, "data"):
+        lin.data = np.expm1(lin.data)
+    else:
+        lin = np.expm1(lin)
+
+    def per_type(M):
+        return pd.DataFrame(np.vstack([np.asarray(M[cts == c].mean(axis=0)).ravel() for c in names]),
+                            index=names, columns=adata.var_names)
+
+    log, linear = per_type(X), per_type(lin)
+    hvg = adata.var["highly_variable"].to_numpy() if "highly_variable" in adata.var else None
+    return SimpleNamespace(log=log, linear=linear, cutoff=ambient_cutoff(log, linear, genes=hvg))
 
 
-def foreign_genes(ct_means: pd.DataFrame, ct: str, ratio: float = 0.1, min_other: float = 1.0) -> list:
+def _foreign_ratios(ct_means, ct: str, min_other: float = 1.0) -> pd.Series:
+    """For genes clearly expressed in another cell type (mean log > min_other there):
+    linear level in `ct` divided by the highest linear level in any other cell type."""
+    other_log = ct_means.log.drop(index=ct).max()
+    cand = other_log.index[other_log > min_other]
+    other_lin = ct_means.linear.drop(index=ct)[cand].max()
+    return ct_means.linear.loc[ct, cand] / other_lin
+
+
+def ambient_cutoff(log: pd.DataFrame, linear: pd.DataFrame, genes=None, seed: int = 0) -> float:
+    """Ratio separating ambient from real expression, fit on the tissue itself.
+
+    Over every (cell type, gene) pair where the gene is clearly expressed elsewhere,
+    log10 of the linear ratio has two groups: ambient RNA at a small, near-constant
+    fraction of the source (Lung: ~0.004) and real expression (Lung: ~0.12). A two-component
+    Gaussian mixture places the cutoff where a pair becomes more likely real (Lung: 0.031).
+    Fit per tissue because contamination differs between tissues and samples."""
+    from sklearn.mixture import GaussianMixture
+    ns = SimpleNamespace(log=log, linear=linear)
+    if genes is not None:
+        ns = SimpleNamespace(log=log.loc[:, genes], linear=linear.loc[:, genes])
+    v = pd.concat([_foreign_ratios(ns, ct) for ct in ns.log.index])
+    v = np.log10(v[v > 1e-6].to_numpy())[:, None]
+    gm = GaussianMixture(2, random_state=seed).fit(v)
+    hi = int(np.argmax(gm.means_.ravel()))
+    grid = np.linspace(v.min(), v.max(), 4001)[:, None]
+    return float(10 ** grid[np.argmax(gm.predict_proba(grid)[:, hi] > 0.5), 0])
+
+
+def foreign_genes(ct_means, ct: str, min_other: float = 1.0) -> list:
     """Genes that belong to another cell type: clearly expressed somewhere else
-    (mean log-expression > min_other) but < ratio of that level in `ct`.
-    In `ct` they are most likely ambient RNA (e.g. Scgb1a1 from club cells in T cells)."""
-    own = ct_means.loc[ct]
-    other = ct_means.drop(index=ct).max()
-    return list(ct_means.columns[(other > min_other) & (own < ratio * other)])
+    (mean log-expression > min_other) but in `ct` at a linear level below the tissue's
+    ambient cutoff relative to that source. In `ct` they are most likely ambient RNA
+    (e.g. Scgb1a1 from club cells in T cells, Sftpc from type II pneumocytes in neutrophils).
+
+    The ratio is on the linear scale: the earlier log-scale ratio let abundant ambient
+    genes pass, because a log compresses a 500-fold difference to about 7-fold."""
+    r = _foreign_ratios(ct_means, ct, min_other)
+    return list(r.index[r < ct_means.cutoff])
 
 
 def feature_mask(adata, level: str = "bio", ct: str | None = None,
-                 ct_means: pd.DataFrame | None = None, hvg_only: bool = True) -> np.ndarray:
+                 ct_means: SimpleNamespace | None = None, hvg_only: bool = True) -> np.ndarray:
     """Boolean mask over adata.var_names.
 
     level="hvg"   highly variable genes only
@@ -229,6 +326,9 @@ def usable_cell_types(adata, min_cells=50, min_mice=2, min_ages=1) -> list:
     obs["age_str"] = obs["age"].astype(str)
     size = obs.groupby(["cell_ontology_class", "group"], observed=True).agg(
         cells=("mouse.id", "size"), mice=("mouse.id", "nunique"), ages=("age_str", "nunique")).unstack()
+    # A group absent from the whole tissue (e.g. no young mice) must count as 0, not be skipped
+    size = size.reindex(columns=pd.MultiIndex.from_product([["cells", "mice", "ages"], ["old", "young"]]),
+                        fill_value=0).fillna(0)
     ok = size[(size["cells"] >= min_cells).all(axis=1) & (size["mice"] >= min_mice).all(axis=1)
               & (size["ages"] >= min_ages).all(axis=1)]
     return list(ok.index)
@@ -327,6 +427,37 @@ def top_genes(adata, ct, features, n=20, **prep_kw):
     return pd.DataFrame({"up_in_old": coef.tail(n)[::-1].index, "up_in_young": coef.head(n).index})
 
 
+def technical_adata(adata) -> sc.AnnData:
+    """Same cells, but the features are only technical: log total counts, log genes per cell,
+    and the fraction of counts from ribosomal, dissociation and hemoglobin genes (z-scored).
+
+    Run through age_auc / cross_age_auc like expression. If these alone separate young
+    from old on unseen age groups, the cell type's age signal can't be told apart from
+    a processing difference. Old cells can differ technically for real reasons (RNA content),
+    so a high score is a warning, not proof of batch."""
+    import anndata as ad
+    C = adata.layers["counts"]
+    C = C.tocsr() if hasattr(C, "tocsr") else np.asarray(C)
+    total = np.asarray(C.sum(axis=1)).ravel()
+    names = adata.var_names
+
+    def frac(mask):
+        return np.asarray(C[:, np.where(mask)[0]].sum(axis=1)).ravel() / total
+
+    feats = pd.DataFrame({
+        "log_total": np.log10(total),
+        "log_genes": np.log10(np.asarray((C > 0).sum(axis=1)).ravel()),
+        "ribosomal": frac(names.str.match(r"^Rp[sl]\d")),
+        "dissociation": frac(names.isin(DISSOCIATION)),
+        "hemoglobin": frac(names.str.match(r"^(Hb[ab]-|Beta-s)")),
+    }, index=adata.obs_names)
+    feats = (feats - feats.mean()) / feats.std().replace(0, 1)
+    tech = ad.AnnData(feats.to_numpy(), obs=adata.obs.copy(),
+                      var=pd.DataFrame(index=feats.columns))
+    tech.var["highly_variable"] = True
+    return tech
+
+
 # ----------------------------------------------------------------------------
 # Age clock (regression)
 # ----------------------------------------------------------------------------
@@ -342,7 +473,14 @@ def clock_eval(adata, ct, alpha=100.0, ages=None, **prep_kw):
     return cells, per_mouse
 
 
-def clock_summary(adata, ct, **kw):
+def clock_summary(adata, ct, min_mice=3, **kw):
+    """Per-mouse error of the clock against the naive baseline. NaN with fewer than
+    `min_mice` adult mice (leave-one-mouse-out needs others to train on)."""
+    ages = kw.get("ages") or ADULT
+    obs = adata.obs[(adata.obs.cell_ontology_class == ct) & adata.obs.age.isin(ages)]
+    drop = kw.get("drop_mice") or []
+    if obs.loc[~obs["mouse.id"].isin(drop), "mouse.id"].nunique() < min_mice:
+        return {"mae_months": np.nan, "naive_mae": np.nan, "spearman_mice": np.nan, "n_mice": 0}
     _, pm = clock_eval(adata, ct, **kw)
     naive = np.mean([abs(t - pm["true"].drop(m).mean()) for m, t in pm["true"].items()])
     return {
@@ -354,10 +492,13 @@ def clock_summary(adata, ct, **kw):
 
 
 def held_out_age(adata, ct, hold="21m", alpha=100.0, ages=None, **prep_kw):
-    """Train without one age group, predict it. Returns median prediction per mouse."""
+    """Train without one age group, predict it. Returns median prediction per mouse
+    (empty if the cell type lacks that age, or fewer than two other ages are left to train on)."""
     ages = ADULT if ages is None else ages
     X, y, mice = prep(adata, ct, ages=ages, target="months", **prep_kw)
     te = y == AGE_MONTHS[hold]
+    if not te.any() or len(np.unique(y[~te])) < 2:
+        return pd.Series(dtype=float)
     model = Ridge(alpha=alpha).fit(X[~te], y[~te])
     return pd.Series(model.predict(X[te]), index=mice[te]).groupby(level=0).median().round(1)
 
