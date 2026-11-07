@@ -1,4 +1,4 @@
-# Single-Cell Aging
+# Mouse Single-Cell Aging
 
 Find the cell type in an aging tissue whose gene expression really tracks age,
 and separate that signal from the batch it was collected in.
@@ -319,7 +319,7 @@ separate animal perfectly and still be reading the collection batch.
 
 ```bash
 conda env create -f environment.yml
-conda activate scaging
+conda activate mscaging
 ```
 
 Core: `scanpy`, `anndata`, `scikit-learn`, `pandas`, `numpy`, `scipy`,
@@ -362,7 +362,7 @@ the previous one wrote. The tissue is a parameter: the first cell of `02`–`05c
 reads `TISSUE` (default `Lung`), and every path is built from it.
 
 ```bash
-conda activate scaging
+conda activate mscaging
 python src/download.py --list                  # what figshare holds, and the size
 python src/download.py droplet Lung Kidney     # or: droplet all
 python src/download.py external                # Kimmel 2019, bulk atlas, published gene list

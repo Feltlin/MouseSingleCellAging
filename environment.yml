@@ -1,6 +1,6 @@
 # Rebuild with:  conda env create -f environment.yml
 # Update with:   conda env update -f environment.yml
-name: scaging
+name: mscaging
 channels:
   - conda-forge
 dependencies:
