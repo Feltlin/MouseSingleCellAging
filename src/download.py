@@ -3,7 +3,7 @@
     python src/download.py --list                      # show files and sizes, download nothing
     python src/download.py droplet Kidney Spleen       # selected droplet tissues
     python src/download.py droplet all                 # every droplet tissue
-    python src/download.py external                    # eLife gene tables + Kimmel 2019 data
+    python src/download.py external                    # eLife gene tables, Kimmel 2019, TMS bulk, Wagner 2024 small RNA
 
 Tissue files go to data/{tissue}/ (the name the notebooks expect, see ag.paths);
 external files go to data/external/. Files already present with the right md5 are skipped.
@@ -22,6 +22,10 @@ TISSUE_ARTICLE = 12654728     # "Tabula Muris Senis Data Objects": one h5ad per 
 GENE_ARTICLE = 12827615       # "TMS gene data (final)": eLife 2021 results, Kimmel 2019 data
 EXTERNAL = ["global_aging_genes.tsv", "aging_score_model.tsv", "DGE_result_release_sig.zip",
             "Kimmel_GR_2019_data.zip", "190304_maca_bulk.h5ad"]
+# Wagner et al. 2024 small RNA of the same TMS bulk mice (GEO GSE217458); not on figshare, so md5 is pinned here
+GEO_URL = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE217nnn/GSE217458/suppl/"
+GEO = {"GSE217458_TMS_rpmm_Complete_Filtered_global_GEO_18012023.csv.gz": ("eb72750ea04a300b001bf598ce9358d7", 20017716),
+       "GSE217458_annotation_TMS.csv.gz": ("c54978401bdf7ff13cff72ed0abc5dd0", 23702)}
 DROPLET_PREFIX = "tabula-muris-senis-droplet-processed-official-annotations-"
 USER_AGENT = "single-cell-aging-download/1.0"
 
@@ -81,6 +85,8 @@ def main() -> None:
         print("external:")
         for n in EXTERNAL:
             print(f"  {n:<32} {ext[n]['size'] / 1e6:>8,.1f} MB")
+        for n, (_, size) in GEO.items():
+            print(f"  wagner_mirna/{n:<32} {size / 1e6:>8,.1f} MB")
         return
 
     if args.what == "droplet":
@@ -94,6 +100,9 @@ def main() -> None:
         ext = {f["name"]: f for f in file_list(GENE_ARTICLE)}
         for n in EXTERNAL:
             fetch(ext[n], ROOT / "data" / "external" / n)
+        for n, (digest, size) in GEO.items():
+            fetch({"download_url": GEO_URL + n, "computed_md5": digest, "size": size},
+                  ROOT / "data" / "external" / "wagner_mirna" / n)
 
 
 if __name__ == "__main__":
