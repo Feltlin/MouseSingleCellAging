@@ -40,6 +40,7 @@ AMBIENT = ["S100a8", "S100a9", "Lyz2", "Ngp", "Camp", "Ltf", "Retnlg",
 # Technical and sex genes: ribosomal proteins (incl. pseudogenes), rRNA, Malat1,
 # X/Y-linked sex genes, hemoglobin
 TECHNICAL_PATTERN = r"^(Rp[sl]\d|Rn45s|Malat1|Xist|Tsix|Ddx3y|Eif2s3y|Kdm5d|Uty|Beta-s|Hb[ab]-)"
+SEX_PATTERN = r"^(Xist|Tsix|Ddx3y|Eif2s3y|Kdm5d|Uty)$"   # sex-chromosome genes; dropped by default (prep, feature_mask)
 
 # Genes induced within minutes by tissue dissociation (not aging)
 DISSOCIATION = ["Fos", "Fosb", "Jun", "Junb", "Jund", "Egr1", "Atf3", "Ier2", "Ier3",
@@ -260,15 +261,17 @@ def feature_mask(adata, level: str = "bio", ct: str | None = None,
                  ct_means: SimpleNamespace | None = None, hvg_only: bool = True) -> np.ndarray:
     """Boolean mask over adata.var_names.
 
-    level="hvg"   highly variable genes only
-    level="clean" + drop AMBIENT genes
-    level="bio"   + drop technical/sex genes
+    level="hvg"   highly variable genes only, sex-chromosome genes included (the pre-review
+                  default; kept to report how much the sex genes change a score)
+    level="clean" + drop sex-chromosome and AMBIENT genes
+    level="bio"   + drop technical genes
     level="own"   + drop other cell types' marker genes (needs ct and ct_means)
     """
     names = adata.var_names
     mask = adata.var["highly_variable"].to_numpy().copy() if hvg_only else np.ones(len(names), bool)
     if level == "hvg":
         return mask
+    mask &= ~names.str.match(SEX_PATTERN)
     mask &= ~names.isin(AMBIENT)
     if level == "clean":
         return mask
@@ -291,6 +294,10 @@ def prep(adata, ct, ages=None, target="binary", features=None, max_cells=300, se
 
     target="binary": y = 1 for OLD ages, 0 otherwise
     target="months": y = age in months
+    features=None: every highly variable gene except the sex-chromosome genes (SEX_PATTERN).
+    Sex is tied to age group in TMS, and with Xist or a Y gene in, a split that pairs male
+    young with female old in training and the reverse in test inverts the model (07 §12).
+    Pass feature_mask(adata, "hvg") for the pre-review set with them.
     Returns X (dense), y, mouse ids (and each cell's age label if return_ages).
     """
     ages = (YOUNG + OLD) if ages is None else ages
@@ -303,7 +310,10 @@ def prep(adata, ct, ages=None, target="binary", features=None, max_cells=300, se
     idx = (obs[mask].sample(frac=1, random_state=seed)
                     .groupby("mouse.id", observed=True).head(max_cells).index)
     sub = adata[idx]
-    feat = adata.var["highly_variable"].to_numpy() if features is None else features
+    if features is None:
+        feat = adata.var["highly_variable"].to_numpy() & ~adata.var_names.str.match(SEX_PATTERN)
+    else:
+        feat = features
     X = sub[:, feat].X
     X = X.toarray() if hasattr(X, "toarray") else np.asarray(X)
     if target == "binary":
@@ -503,8 +513,6 @@ def sex_adata(adata) -> sc.AnnData:
     out.var["highly_variable"] = True
     return out
 
-
-SEX_PATTERN = r"^(Xist|Tsix|Ddx3y|Eif2s3y|Kdm5d|Uty)$"   # sex-chromosome genes (also in TECHNICAL_PATTERN)
 
 
 # ----------------------------------------------------------------------------

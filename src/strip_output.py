@@ -19,6 +19,7 @@ def strip(nb: dict) -> dict:
             continue
         cell["outputs"] = []
         cell["execution_count"] = None
+        cell.get("metadata", {}).pop("execution", None)   # run timestamps written by nbclient
     return nb
 
 

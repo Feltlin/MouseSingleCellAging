@@ -73,12 +73,12 @@ read the atlas
 
 | Finding | Evidence | Strength |
 | --- | --- | --- |
-| On this atlas, an ordinary mouse-held-out AUROC **cannot** be read as aging | Lung: 12 of 14 cell type reach 0.7 on unseen mice, 4 keep a signal on unseen age group; perfect per-mouse ranking with chance-level transfer | **strong**, the methodological result |
-| Structural cell (stromal, endothelial, epithelial) carry a more transferable age signal than immune cell of the same organ | Within a tissue, cross-age AUROC is higher in structural row by 0.14 (within-tissue permutation p = 0.001), and by 0.11 with sex-chromosome gene removed (p = 0.002). The pass-rate difference is **not** significant within tissue (p = 0.13), and lung carries most of the gap | **moderate**, downgraded from the first draft |
-| Much of the "immune cell fail the batch check" pattern outside lung is sex, not batch | Removing six sex-chromosome gene lifts 12 row above 0.7, all upward, mostly marrow; immune pass rate 0.33 → 0.59 | **new**, found in the critical review |
-| MHC class I and complement rise with age | Pseudobulk in 22 of 22 robust row (*H2-D1*, *H2-K1*); another lab (*C3*, *Cfb*); bulk time course (MHC-I 6–7 organ, *C4b* 9 organ) | **strong**: three independent design |
+| On this atlas, an ordinary mouse-held-out AUROC **cannot** be read as aging | Lung: 12 of 14 cell type reach 0.7 on unseen mice, 6 keep a signal on unseen age group (one voided by its shuffled control); perfect per-mouse ranking with chance-level transfer | **strong**, the methodological result |
+| Structural cell (stromal, endothelial, epithelial) carry a more transferable age signal than immune cell of the same organ | Within a tissue, cross-age AUROC is higher in structural row by 0.10 (within-tissue permutation p = 0.013; 0.11, p = 0.002 without technically confounded row). Structural row do **not** pass more often (0.74 vs 0.56, within-tissue p = 0.28), and without lung the immune pass rate is the higher one | **weak to moderate**, downgraded twice |
+| Much of the "immune cell fail the batch check" pattern outside lung was sex, not batch | Six sex-chromosome gene, tied to age group, inverted the model on some split; removed by default since the review, they lift 11 row to an age signal, none falls; immune pass rate 0.30 → 0.56 | **new**, found in the critical review |
+| MHC class I and complement rise with age | Pseudobulk in 30 of 30 robust row (*H2-D1*; *H2-K1*, *B2m* 29 of 30); another lab (*C3*, *Cfb*); bulk time course (MHC-I 6–7 organ, *C4b* 9 organ) | **strong**: three independent design |
 | Collagen and matrix gene fall with age | Lung stroma per cell; bulk *Col1a1* / *Col3a1* down in 13 / 14 of 17 organ, plate balanced | **strong** |
-| p21 (*Cdkn1a*) rises in old structural cell | Inside this atlas only: 14 of 15 robust structural row; **not** in another lab, **not** in bulk | **not replicated**: reported as an observation, not an aging marker |
+| p21 (*Cdkn1a*) rises in old structural cell | Inside this atlas only: 16 of 17 robust structural row; **not** in another lab, **not** in bulk | **not replicated**: reported as an observation, not an aging marker |
 | A weak age direction transfers to another lab | 19 of 19 matched row rank old above young (AUROC 0.51–0.76), but technical feature alone also transfer in 12 of 19; expression clearly beats them in 10 row (myeloid, epithelial, endothelial, adventitial) | **moderate** for those 10 row; **unresolved** for lymphocyte |
 | Aging looks like steady drift, not acceleration | Linear beats a saturating-removal model for p16 in 10 of 11 organ, but p16 sits near detection floor | **weak**: the data cannot test acceleration |
 
@@ -391,7 +391,7 @@ notebook at once:
 | `max_cells` | 300 | Cap per mouse, so one animal cannot dominate a cell type |
 | `AMBIENT` | *S100a8/9*, *Lyz2*, hemoglobin, *Scgb1a1* … | Gene treated as free-floating RNA rather than a cell's own |
 | `TECHNICAL_PATTERN` | `Rp[sl]`, `Malat1`, `Xist`, `Ddx3y` … | Ribosomal, rRNA, and sex-linked gene |
-| `SEX_PATTERN` | *Xist*, *Tsix*, *Ddx3y*, *Eif2s3y*, *Kdm5d*, *Uty* | Sex-chromosome gene, removed in the sex check |
+| `SEX_PATTERN` | *Xist*, *Tsix*, *Ddx3y*, *Eif2s3y*, *Kdm5d*, *Uty* | Sex-chromosome gene, left out of every model by default (section 10.3) |
 | `DISSOCIATION` | *Fos*, *Jun*, *Hspa1a* … | Gene induced by tissue digestion, flagged not dropped |
 | `CIRCADIAN` | *Dbp*, *Nr1d1*, *Per1* … | Time-of-day gene, flagged as a batch signature |
 | `TISSUE_SETTINGS` | Lung only | Every per-tissue choice, in one place (below) |
@@ -527,7 +527,8 @@ only in what was changed about the input:
 `figure/atlas/atlas.csv` adds, per tissue × cell type row: the verdict, the
 compartment, the technical-only score (`tech_cross_age`, `tech_confounded`), the
 dominant-donor rerun, and the stricter check of section 10.3: `ci90_low` /
-`ci90_high`, `sex_only_cross_age`, `no_sex_genes_cross_age` and
+`ci90_high`, `sex_only_cross_age`, `with_sex_genes_cross_age` (the score with
+the six sex-chromosome gene put back, i.e. before the review) and
 `males_only_cross_age`.
 
 `age_report.csv` describes the main model instead of varying it:
@@ -565,7 +566,7 @@ The number worth keeping are quoted in [section 10](#10-result-mouse-aging-atlas
 Three caveat about the extreme.
 
 **A `cross_age` far below 0.5 is not a weak result, it is an inverted one.** At
-0.15 the model is reliably wrong on a new age group, which can only happen if
+0.31 (lung NK cell) the model is reliably wrong on a new age group, which can only happen if
 what it learned was a property of the batch that flips sign between batch. Read
 it as a positive detection of a batch effect, not as a near-miss.
 
@@ -650,7 +651,10 @@ $$y_i = \mathbb{1}\left[a(d(i)) \in \text{OLD}\right],$$
 
 and a donor named in the tissue's `exclude` setting for this cell type is
 dropped here, with the reason recorded in `TISSUE_SETTINGS`. A cell type is
-modelled only with at least 50 cell and 2 donor **in both class**.
+modelled only with at least 50 cell and 2 donor **in both class**. The feature
+are the 2,000 variable gene minus the six sex-chromosome gene (`SEX_PATTERN`):
+sex is tied to age group, and with *Xist* in, a model can be inverted on a new
+age group for a reason that has nothing to do with age (section 10.3).
 
 ### 7.4 Step 4: The Two Gate
 
@@ -721,8 +725,8 @@ all. The filter is cumulative:
 
 | Level | Drop |
 | --- | --- |
-| `hvg` | Nothing: the 2,000 highly variable gene |
-| `clean` | `AMBIENT`: free-floating RNA and blood gene |
+| `hvg` | Nothing: the 2,000 highly variable gene, sex-chromosome gene included (kept only to report the pre-review score) |
+| `clean` | `SEX_PATTERN`, and `AMBIENT`: free-floating RNA and blood gene |
 | `bio` | Ribosomal, rRNA, *Malat1*, *Xist*, Y-linked, hemoglobin |
 | `own` | Another cell type's marker gene |
 
@@ -984,8 +988,8 @@ it holds outside this atlas?
 | Section | Status | One-line answer |
 | --- | --- | --- |
 | [10.1](#101-which-tissue-can-be-tested) Survey | confirmatory | 9 of 16 tissue testable; 23 mice in all |
-| [10.2](#102-age-signal-across-tissue) Atlas | confirmatory | structural row score higher within tissue; the pass-rate gap is not significant within tissue |
-| [10.3](#103-check-behind-the-atlas) Check | confirmatory | technical batch in bladder; sex never fakes a pass but hides immune signal; every pass has an interval above 0.5 |
+| [10.2](#102-age-signal-across-tissue) Atlas | confirmatory | 40 of 70 row pass; structural row score about 0.1 higher within tissue but do not pass more often |
+| [10.3](#103-check-behind-the-atlas) Check | confirmatory | technical batch in bladder; sex gene hid immune signal and are now left out; sex never fakes a pass; every pass has an interval above 0.5 |
 | [10.4](#104-senescence-across-tissue) Senescence | confirmatory | SenMayo flat; p21 rises inside this atlas only |
 | [10.5](#105-gene-with-the-animal-as-sample) Pseudobulk | confirmatory | a small shared core: MHC class I, inflammation |
 | [10.6](#106-replication-in-another-lab) Another lab | confirmatory | weak direction transfers; complement replicates, p21 does not |
@@ -1030,53 +1034,57 @@ immune cell aged equally visibly, they should pass the batch check equally
 often. The lung suggested they do not. Here the same test is applied to 70
 tissue × cell type row, with the threshold of section 8.
 
-Voided and not-testable row are left out; the right half also drops the 8 row
-that technical feature alone can classify (10.3):
+Every model leaves out the six sex-chromosome gene (10.3). Verdict over the 70
+row: 40 age signal, 19 partial, 4 batch driven, 7 void (with the sex gene in, as
+before the review: 29, 28, 6, 7). Voided and not-testable row are left out
+below; the right half also drops the 7 row that technical feature alone can
+classify (10.3):
 
 | Compartment | Row | Age signal | Rate | Without technical row | Median cross-age |
 | --- | --- | --- | --- | --- | --- |
-| Stromal | 8 | 6 | 0.75 | 4 of 6, 0.67 | 0.84 |
-| Epithelial | 12 | 9 | 0.75 | 8 of 10, 0.80 | 0.77 |
-| Endothelial | 6 | 3 | 0.50 | 3 of 4, 0.75 | 0.68 |
-| Immune | 28 | 9 | 0.32 | 9 of 27, 0.33 | 0.63 |
-| Progenitor | 8 | 2 | 0.25 | 2 of 7, 0.29 | 0.54 |
+| Stromal | 8 | 7 | 0.88 | 5 of 6, 0.83 | 0.88 |
+| Epithelial | 13 | 10 | 0.77 | 9 of 11, 0.82 | 0.80 |
+| Endothelial | 6 | 3 | 0.50 | 3 of 4, 0.75 | 0.71 |
+| Immune | 27 | 15 | 0.56 | 15 of 26, 0.58 | 0.71 |
+| Progenitor | 8 | 5 | 0.62 | 4 of 7, 0.57 | 0.72 |
 
 The first version of this comparison used Fisher and Mann–Whitney test over
-row (structural 0.75 vs immune 0.33, p = 0.008 and 0.0009). Those test treat
-every row as independent, but row of one tissue share mice, and marrow and
-spleen contribute **only** immune row: a tissue where everything scores low for
-a tissue-wide reason then lowers the immune average without saying anything
-about immune cell. The stricter version compares row **within** a tissue
-(`07` section 10):
+row. Those test treat every row as independent, but row of one tissue share
+mice, and marrow and spleen contribute **only** immune row: a tissue where
+everything scores low for a tissue-wide reason then lowers the immune average
+without saying anything about immune cell. The stricter version compares row
+**within** a tissue (`07` section 10):
 
 | Test (without technical row) | Structural − immune | p | Read as |
 | --- | --- | --- | --- |
-| Row as independent sample (Fisher; Mann–Whitney) | pass rate +0.42; cross-age higher | 0.008; 0.0009 | **superseded**: overstates independence |
-| Within-tissue permutation, pass rate | +0.42 | 0.13 | **not significant** |
-| Within-tissue permutation, mean cross-age AUROC | +0.14 | 0.001 | **holds** |
-| Tissue fixed effect, adjusted for cell and mouse count | +0.14 | 0.0009 | holds; cell count (p 0.70) and mouse count (p 0.36) do not explain it |
-| Tissue with both kind where structural is higher | 5 of 7 | sign test 0.23 | consistent in direction, not decisive |
-| Same comparison, sex-chromosome gene removed (10.3) | pass rate 0.80 vs 0.59; cross-age +0.11 | 0.23; 0.002 | the continuous difference holds; the pass-rate gap nearly closes |
+| Row as independent sample (Fisher; Mann–Whitney) | pass rate 0.81 vs 0.58; cross-age higher | 0.12; 0.005 | **superseded**: overstates independence |
+| Within-tissue permutation, pass rate | +0.23 | 0.20 | **not significant** |
+| Within-tissue permutation, mean cross-age AUROC | +0.11 | 0.002 | **holds** |
+| Tissue fixed effect, adjusted for cell and mouse count | +0.15 | 0.001 | holds; cell count (p 0.94) and mouse count (p 0.16) do not explain it |
+| Tissue with both kind where structural is higher | 4 of 6 | sign test 0.34 | not decisive |
+| Same, with the sex gene put back (pre-review) | pass rate 0.76 vs 0.31 (+0.45); cross-age +0.15 | 0.10; 0.001 | the pass-rate gap of the first draft was mostly sex |
+| All row, including technically confounded | pass rate 0.74 vs 0.56 (+0.19); cross-age +0.10 | 0.28; 0.013 | same picture |
 
-**Read as:** inside an organ, structural cell keep a more transferable age
-signal than the immune cell of the same mice, by about 0.1 AUROC. The binary
-"pass rate" contrast, the headline of the first draft, is not supported once
-tissue is accounted for: the lung (structural 0.85 against immune 0.54) carries
-most of it, and outside the lung much of the immune shortfall was sex (10.3).
+**Read as:** inside an organ, structural cell keep a somewhat more transferable
+age signal than the immune cell of the same mice, by about 0.1 AUROC. The
+binary "pass rate" contrast, the headline of the first draft, does not survive:
+once the sex gene are out and tissue is accounted for, immune row pass about as
+often as structural row. The lung (structural 0.87 against immune 0.58) carries
+what is left of the gap; without the lung the immune pass rate (0.78) is higher
+than the structural one (0.70).
 
-- **Structural row that pass:** lung fibroblast (0.95) and adventitial cell
-  (0.94), limb muscle mesenchymal stem cell (0.90), six of eight kidney
-  epithelial segment (0.73–0.86), kidney mesangial cell (0.77), kidney and
-  muscle endothelium (0.88, 0.79).
-- **Immune aging is organ dependent, not batch-only.** Lung and marrow immune
-  cell mostly sit at 0.38–0.62, but limb muscle B (0.83), T (0.86) and
-  macrophage (0.76) pass, as do spleen T cell. Without sex-chromosome gene,
-  marrow plasma cell, monocyte, macrophage and naive T cell also reach 0.71–0.77
-  (10.3); the lung immune row stay where they are.
-- **Caveat.** Within-tissue cross-age falls as the number of mice rises (ρ
-  −0.36), because the large tissue (lung, marrow) are the ones with many immune
-  row; the fixed-effect model shows mouse count itself does not explain the
-  compartment gap.
+- **Structural row that pass:** lung fibroblast (0.95), adventitial cell (0.94)
+  and bronchial smooth muscle (0.76), limb muscle mesenchymal stem cell (0.90),
+  seven of eight kidney epithelial segment (0.73–0.87), kidney mesangial cell
+  (0.77), kidney and muscle endothelium (0.89, 0.79).
+- **Immune aging is organ dependent, not batch-only.** Limb muscle B (0.83), T
+  (0.86) and macrophage (0.76); spleen T (0.82), NK T (0.85) and B (0.77);
+  marrow macrophage (0.77), naive T (0.75), plasma cell (0.72) and monocyte
+  (0.71); liver NK (0.79); bladder leukocyte (0.90); lung alveolar macrophage
+  (0.79). The lung lymphocyte and monocyte stay at 0.45–0.60.
+- **Caveat.** Cross-age does not track the number of mice across row (ρ −0.21,
+  p 0.10) or of cell (ρ 0.13), and the fixed-effect model shows neither explains
+  the compartment gap.
 
 ### 10.3 Check Behind The Atlas
 
@@ -1093,46 +1101,54 @@ each score is shown as a 90% interval over test mice.
 | --- | --- | --- | --- |
 | Bladder urothelial cell | 0.96 | 0.86 | technically confounded |
 | Bladder cell (mesenchyme) | 0.96 | 0.80 | technically confounded |
-| Heart fibroblast | 0.77 | 0.74 | technically confounded |
+| Heart fibroblast | 0.86 | 0.74 | technically confounded |
+| Marrow precursor B cell | 0.72 | 0.83 | technically confounded |
 | Lung fibroblast | 0.95 | 0.60 | clean |
 | Limb muscle mesenchymal stem cell | 0.90 | 0.68 | clean, but close |
 
-26 of the 29 age-signal row survive it. An old cell can differ technically for a
+36 of the 40 age-signal row survive it. An old cell can differ technically for a
 real reason, such as RNA content, so a confounded row is a warning rather than a
 disproof; it is reported, not deleted.
 
-**Sex.** The main model sees every variable gene, sex-chromosome gene
-included, while sex is tied to age group. Three test per row (`07` §11–12):
+**Sex.** Sex is tied to age group: the 21-month mice are all female, the 24- and
+30-month mice all male. The first version of every model saw all 2,000 variable
+gene, the six sex-chromosome gene (*Xist*, *Tsix*, *Ddx3y*, *Eif2s3y*, *Kdm5d*,
+*Uty*) included. The critical review tested what they do (`07` §11–12):
 
 | Test | Result | Read as |
 | --- | --- | --- |
 | Sex as the only feature, cross-age | never ≥ 0.7 in any row (highest 0.68, lung fibroblast) | sex alone cannot pass the check |
-| Main check without the six sex-chromosome gene | all 29 age-signal row stay ≥ 0.7 (median change 0.03) | no pass depends on *Xist* or a Y gene |
-| Male mice only, where two young and two old age remain | 17 of 20 testable age-signal row stay ≥ 0.7; kidney brush cell 0.68, collecting duct 0.59, spleen T 0.69 drop | most pass survive without female mice |
-| Verdict that change without sex gene | **12 row rise** to ≥ 0.7, none fall: 11 immune or progenitor row (marrow 7, spleen 2, liver Kupffer cell, heart leukocyte; one spleen row is void by its shuffled control) and lung bronchial smooth muscle | sex gene **hid** signal: in some split the training age pair male young with female old and the test age the reverse, inverting a model that leaned on *Xist* |
+| Verdict with against without the six sex-chromosome gene | without them, **11 row rise** to an age signal and none falls: marrow 7 (macrophage, monocyte, naive T, plasma cell, promonocyte, hematopoietic precursor, precursor B), spleen B cell, liver Kupffer cell, heart leukocyte, lung bronchial smooth muscle; two marrow row go from batch driven to partial | sex gene **hid** signal: in some split the training age pair male young with female old and the test age the reverse, inverting a model that leaned on *Xist* |
+| Male mice only, where two young and two old age remain | 19 of 22 testable age-signal row stay ≥ 0.7; kidney brush cell 0.68, collecting duct 0.59, spleen T 0.69 drop | most pass survive without female mice; autosomal sex difference remain |
 
-The last row is the most consequential finding of the review. Without the sex
-gene the immune pass rate rises from 0.33 to 0.59 (structural 0.75 → 0.80), so
-outside the lung a large part of the "immune fails the batch check" pattern was
-sex misalignment rather than batch. The lung immune row do not change. The
-verdict table and the downstream module (08–16) keep the original verdict,
-fixed before this check; removing sex-chromosome gene by default is the first
-item of section 11.4.
+Because sex gene can only invert a split here, never create a pass, they are
+**left out of every model by default** since the review (`ag.prep`,
+`feature_mask`). This changed a setting after its effect had been seen, which
+the project otherwise avoids; the reason is the mechanism above, not the better
+score, and every row reports both version (`with_sex_genes_cross_age` in
+`atlas.csv`). With the sex gene in, the immune pass rate is 0.30; without, 0.56
+(structural 0.70 → 0.74). Lung has *Xist* as its only sex-chromosome gene among
+the variable gene; there, removing it lifts alveolar macrophage and bronchial
+smooth muscle to 0.80 on the hand-picked split, while the lung lymphocyte stay
+below 0.6. Two kidney row swap through the shuffled control, which sits at the
+0.6 cutoff for both: podocyte becomes an age signal (control 0.61 → 0.59),
+kidney macrophage becomes void (0.60 → 0.62); read them as threshold case.
 
-**Uncertainty.** All 29 age-signal row have a 90% interval (test mice resampled)
-entirely above 0.5, and 23 entirely above 0.7. The six that reach below 0.7 sit
-near the cutoff: lung alveolar macrophage (0.74, interval 0.69–0.78), kidney
-macrophage, brush cell, collecting duct, loop of Henle ascending limb, and marrow
-erythroblast. The median interval width is 0.05; training mice are held fixed,
-so the true uncertainty is larger.
+**Uncertainty.** All 40 age-signal row have a 90% interval (test mice resampled)
+entirely above 0.5, and 35 entirely above 0.7. The five that reach below 0.7 sit
+near the cutoff: liver Kupffer cell (0.71, interval 0.65–0.72), kidney brush
+cell, loop of Henle ascending limb, marrow monocyte and promonocyte. The median
+interval width is 0.04; training mice are held fixed, so the true uncertainty is
+larger.
 
 **Animal that dominate a cell type.** A cell type that takes over half its cell
-from one animal was rerun without that animal. Two verdict move, neither of
-them a main-table pass: liver sinusoidal endothelium goes from partial (0.57) to
-an age signal (0.82) without 1-M-63, and heart coronary-artery endothelium from
-partial (0.53) to batch driven (0.49) without 30-M-2. **Donor 30-M-2**, excluded
-from the lung myeloid cell type, also dominates cell type in heart and marrow,
-which fits a body-wide condition in that animal.
+from one animal was rerun without that animal. Two verdict move: liver
+sinusoidal endothelium goes from partial (0.60) to an age signal (0.84) without
+1-M-63, and **liver Kupffer cell**, one of the row the sex-gene change lifted,
+falls back from an age signal (0.71) to partial (0.67) without 30-M-3, so that
+pass rests on one animal. **Donor 30-M-2**, excluded from the lung myeloid cell
+type, also dominates cell type in heart and marrow, which fits a body-wide
+condition in that animal.
 
 ### 10.4 Senescence Across Tissue
 
@@ -1144,9 +1160,9 @@ trend is `stable` when it keeps its sign with any one age group left out.
 
 | Measure | Robust structural row, ρ > 0 | BH < 0.1 | Median ρ | Read as |
 | --- | --- | --- | --- | --- |
-| SenMayo score | 8 of 15 | 0 | 0.00 | no age trend |
-| SenMayo-high fraction | 9 of 15 | 0 | 0.20 | weak, not significant |
-| ***Cdkn1a*** (p21) | **14 of 15**, all 5 tissue | 5 | **0.45** | rises inside this atlas; does not replicate (10.6, 10.7) |
+| SenMayo score | 9 of 17 | 0 | 0.00 | no age trend |
+| SenMayo-high fraction | 11 of 17 | 0 | 0.20 | weak, not significant |
+| ***Cdkn1a*** (p21) | **16 of 17**, all 5 tissue | 6 | **0.60** | rises inside this atlas; does not replicate (10.6, 10.7) |
 | *Cdkn2a* (p16) | — | — | — | detected in 0.8% of cell: unusable per cell |
 
 The composite score does not move: most SenMayo gene are secreted factor,
@@ -1154,8 +1170,10 @@ weakly captured per cell, and averaging 115 of them dilutes the few that do.
 p21 alone rises in structural cell of every tissue that has one: bladder
 endothelium ρ 0.95 (BH 0.03), lung fibroblast 0.78 (0.04), lung adventitial 0.77
 (0.09), kidney collecting duct 0.73 (0.05), tongue basal epithelium 0.72,
-muscle endothelium 0.66. The kidney gives seven row from the same animal, so the
-honest count is five tissue of five, not fourteen result.
+kidney podocyte 0.67, muscle endothelium 0.66, lung bronchial smooth muscle
+0.60. The kidney gives eight row from the same animal, so the honest count is
+five tissue of five, not sixteen result. (With the pre-review robust set: 14 of
+15 row, median 0.45.)
 
 **Caveat.** p21 also rises after any acute stress (section 2.4), so even inside
 the atlas a p21 rise is not by itself senescence.
@@ -1171,24 +1189,27 @@ animal as sample?
 
 | Question | Result | Read as |
 | --- | --- | --- |
-| Gene changed per row (padj < 0.1, own gene) | robust median 175, other 58; same median mouse count (13); ×4.9 after adjusting for mice (p = 0.0006) | not a power artifact; but "robust" was defined by an age difference, so this is consistency, not new evidence |
-| Row pair agreeing beyond a shared-mouse null | 116 of 1,485 (7.8%; 5% by chance) | **little shared signal is detectable** at 5–17 mice per row |
+| Gene changed per row (padj < 0.1, own gene) | 30 robust row: median 207, other 25 row: 25; median mouse count 13.5 vs 11; ×7.0 after adjusting for mice (p < 0.0001) | not a power artifact; but "robust" was defined by an age difference, so this is consistency, not new evidence |
+| Row pair agreeing beyond a shared-mouse null | 117 of 1,485 (7.9%; 5% by chance) | **little shared signal is detectable** at 5–17 mice per row |
 | Correlation of effect, between tissue | median 0.06 (null 95th percentile 0.22) | no general program visible |
 | Correlation of effect, within one tissue | median 0.28 (null 0.39) | what shared animal produce on their own |
-| Published "global aging gene", up half | 60 of 93 replicate (p = 0.007) | **holds**: MHC class I and II lead |
-| Published "global aging gene", down half | 68 of 190 replicate (p = 0.0001, below chance) | **does not hold**; ribosomal gene reverse |
+| Published "global aging gene", up half | 66 of 93 replicate (p = 0.0001) | **holds**: MHC class I and II lead |
+| Published "global aging gene", down half | 86 of 190 replicate (p = 0.22) | **does not hold**; ribosomal gene worst (23%) |
 
 The null keeps the shared-mouse structure: the 23 animal's old/young label are
 permuted once and applied to every tissue alike, so two row can only beat it by
 agreeing about age, not about which animal they came from.
 
-The shared core across four or five tissue is small and coherent: MHC class I
-(*H2-D1*, *H2-K1*, *B2m*) and inflammation (*Tnf*, *Casp1*, *Casp4*, *Gbp3*) up.
-*H2-D1* and *H2-K1* rise in all 22 robust row, and they are also the top
-replicating gene of the published list. Of that list, 47 of 330 gene have no
-direction even in its own data and are left out. *Tsc22d3* falls in five tissue
-but is glucocorticoid responsive, so it is flagged as possible time-of-day
-signal. *Cdkn2a* (p16), invisible per cell, rises in 6 row across 4 tissue once
+The shared core across four to six tissue is small and coherent: MHC class I
+(*H2-D1*, *H2-K1*, *B2m*), interferon and inflammation (*Plscr1* in 6 tissue,
+*Casp4*, *Casp1*, *Gbp3*, *Tnf*) and complement *C4b* up. *H2-D1* rises in 30 of
+30 robust row and *H2-K1* and *B2m* in 29, and they are also the top replicating
+gene of the published list. Of that list, 47 of 330 gene have no direction even
+in its own data and are left out. *Tsc22d3* falls in six tissue but is
+glucocorticoid responsive, so it is flagged as possible time-of-day signal.
+With the pre-review robust set (22 row) the same core appeared, smaller
+(29 gene up in ≥ 4 tissue against 52 now), and the published down half leaned
+below chance (68 of 190, p = 0.0001) rather than at it. *Cdkn2a* (p16), invisible per cell, rises in 6 row across 4 tissue once
 count are summed per animal (log2FC 1.8–5.2, low count).
 
 **Caveat.** A young/old pseudobulk contrast in TMS is still a contrast between
@@ -1210,7 +1231,7 @@ and tested on Kimmel unchanged (`10_replication`).
 | Does the direction of aging transfer? | 19 of 19 row score old above young; cell AUROC 0.51–0.76; per-mouse 1.00 in 13 | a weak age signal is shared across lab |
 | Could that transfer be technical? | a model on five technical feature only (depth, gene count, ribosomal, dissociation, hemoglobin fraction) also ranks old above young in 12 of 19 row (median 0.54). Expression beats it by > 0.05 in 10: alveolar macrophage (0.72 vs 0.44), kidney endothelium (0.64 vs 0.38), collecting duct (0.63 vs 0.37), non-classical and classical monocyte, proximal tubule, kidney macrophage, type II pneumocyte, spleen B, adventitial cell. In the other 9 (lung B, NK, CD4 and CD8 T; spleen NK, T, macrophage; kidney mesangial; lung fibroblast) technical feature do as well or better | **partly**: myeloid and structural transfer is not explained by technical feature; lymphocyte transfer cannot be told from a shared RNA-content or handling difference |
 | Does the TMS clock transfer? | old placed older in 19 of 19, compressed (0.7–5 month vs ~14) | yes, in order, not in scale |
-| Does the TMS batch check predict transfer? | ρ = 0.17 (p = 0.48); robust 0.64 vs other 0.59 | no detectable relation (19 row, low power) |
+| Does the TMS batch check predict transfer? | ρ = 0.19 (p = 0.45); robust 0.64 vs other 0.59 (p = 0.22) | no detectable relation (19 row, low power) |
 | Lung fibroblast, the strongest TMS row | 0.51 (0.52 without the pooled 3m sample) | **does not transfer** |
 | Complement (*C3*, *Cfb*) | *C3* +0.61 in every old adventitial cell; *Cfb* +0.43 in every old mesangial cell | **replicates** |
 | p21 (*Cdkn1a*) in structural cell | lung fibroblast −0.03, adventitial −0.46, AT2 −0.21 | **does not replicate** |
@@ -1223,8 +1244,8 @@ reverse of the TMS pattern.
 
 **What the batch check is, after this.** It removes TMS-specific artifact (the
 technical and dominant-animal case of 10.3 are real), but it does not rank which
-signal travel: myeloid cell it fails (lung monocyte, alveolar macrophage, kidney
-macrophage) carry a weak age signal that another lab reproduces and that
+signal travel: myeloid cell it fails or only just passes (lung monocyte, alveolar
+macrophage, kidney macrophage) carry a weak age signal that another lab reproduces and that
 technical feature do not explain. It is a filter, not a measure of portability.
 
 **Caveat.** The 19 row are not 19 independent replication: they come from 3
@@ -1285,20 +1306,22 @@ seen.
 | Attention MIL (neural network) | 0.661 | 14 of 19 | 0.597 | 11 of 19 | the most flexible model, among the worst |
 | Animal-level (pseudobulk) | 0.657 | 16 of 19 | 0.568 | 15 of 19 | too few training example |
 
-| Clock (52 row, every tissue) | Error, month | Lower error than ridge | Held-out age placed between its neighbour |
+| Clock (53 row, every tissue) | Error, month | Lower error than ridge | Held-out age placed between its neighbour |
 | --- | --- | --- | --- |
-| Ridge | 6.0 | — | 0.51 |
-| **Ordinal regression** | **5.3** | **45 of 52 row; majority in 8 of 9 tissue** | 0.49 |
-| LightGBM | 5.8 | 26 of 52 | 0.54 |
-| Kernel ridge (RBF), multilayer perceptron | 6.7, 6.8 | 16, 15 of 52 | 0.53 |
+| Ridge | 5.9 | — | 0.58 |
+| **Ordinal regression** | **5.2** | **42 of 53 row; majority in 7 of 9 tissue** | 0.59 |
+| LightGBM | 5.9 | 23 of 53 | 0.59 |
+| Kernel ridge (RBF), multilayer perceptron | 6.7, 6.8 | 14, 11 of 53 | 0.56, 0.48 |
 
 The row count are the result; a Wilcoxon test over row would treat row of one
 tissue as independent. With 10 to 16 animal per row and age tied to batch,
 flexibility buys nothing that generalizes. Ordinal regression, which uses only
-the **order** of the age, is the one improvement to the clock (it loses in
-both liver row), but no model places a held-out age group between its neighbour
-more often than a coin: the inversion of [section 10.15](#1015-lung-the-clock)
-is the data, not the model.
+the **order** of the age, is the one improvement to the clock (it does not win
+in the single heart or liver row), but no model places a held-out age group
+between its neighbour much more often than a coin: the inversion of
+[section 10.15](#1015-lung-the-clock) is mostly the data, not the model. The
+clock feature have dropped the sex gene since the review; with them in, the
+same comparison gave 45 of 52 row and 0.49–0.54.
 
 ### 10.9 Which Regulator Move With The Shared Signal
 
@@ -1310,17 +1333,23 @@ animal-level statistic of 10.5 (`12_mechanism`). Exploratory, and correlational:
 a regulator whose target rise is **associated** with the change, not shown to
 cause it.
 
-| Layer | Up in robust row of 6–7 tissue | Down | Read as |
-| --- | --- | --- | --- |
-| Transcription factor | NF-κB (*Nfkb1* 18 row, *Rela* 17), interferon (*Irf1* 18, *Stat1* 16), *Stat3*, *Ciita* | nothing comparable (max 8–9 row) | an inflammatory program |
-| Pathway | JAK-STAT (t 4.0), NF-κB, hypoxia | TGF-β (8 row) | |
-| Hallmark | interferon-α, IL-6/JAK/STAT3, inflammatory response, complement, p53, apoptosis, mTORC1 (t 3.0–4.1) | epithelial–mesenchymal transition, oxidative phosphorylation | inflammaging up, matrix and mitochondrial gene down |
-| MHC class I statistic vs regulator activity, across row | *Irf1* ρ 0.61, *Stat1* 0.58, *Rela* 0.54 | | co-varies with interferon and NF-κB activity |
-| Same, MHC gene removed from every target set | 0.60, 0.56, 0.52 (*Ciita*, 14 MHC target: 0.50 → 0.36) | | **not circular** |
-| Regulator recomputed without each row's foreign (ambient) gene | *Irf1* 18 → 17 row, *Stat1* 16 → 17, *Rela* 17 → 15, *Nfkb1* 18 → 13, all still 6 tissue; *Ciita* 17 → 9 | | the interferon / NF-κB rise is the cell's own; the MHC class II driver is half ambient immune RNA |
+30 robust row from 8 tissue (22 from 7 before the sex-gene change):
 
-The glucocorticoid receptor does not change, so the fall of *Tsc22d3* is not a
-stress-hormone effect through it. AP-1 (*Jun*, *Fos*, *Egr1*) does rise, and
+| Layer | Up in robust row of 6–8 tissue | Down | Read as |
+| --- | --- | --- | --- |
+| Transcription factor | NF-κB (*Nfkb1* 23 row, *Rela* 21), interferon (*Irf1* 24, *Stat1* 20), *Stat3*, *Ciita* with *Rfx5*/*Rfxank*/*Rfxap* | less: *Vhl*, *Bmal1* 11 row, *Tef* 9 (clock gene: time of day) | an inflammatory program |
+| Pathway | JAK-STAT (t 3.0), p53, NF-κB, hypoxia | TGF-β (10 row), MAPK (9) | |
+| Hallmark | interferon-γ (t 5.8), TNF-α via NF-κB, IL-6/JAK/STAT3, inflammatory response, complement, apoptosis, p53, mTORC1 (t 2.8–5.0) | cell cycle (MYC target, G2M, E2F) | inflammaging up, proliferation down |
+| MHC class I statistic vs regulator activity, across row | *Stat1* ρ 0.62, *Irf1* 0.56, *Rela* 0.53 | | co-varies with interferon and NF-κB activity |
+| Same, MHC gene removed from every target set | 0.60, 0.57, 0.50 (*Ciita*, 14 MHC target: 0.52 → 0.47) | | **not circular** |
+| Regulator recomputed without each row's foreign (ambient) gene | *Irf1* 24 → 21 row, *Stat1* 20 → 21, *Rela* 21 → 19, *Nfkb1* 23 → 18, all still 8 tissue; *Ciita* 22 → 13 | | the interferon / NF-κB rise is the cell's own; much of the MHC class II driver is ambient immune RNA |
+
+With the pre-review robust set, epithelial–mesenchymal transition (matrix) and
+oxidative phosphorylation also came out as falling; with 30 row they split
+(EMT 10 row up, 10 down; oxidative phosphorylation 15 up, 13 down), so neither
+is a shared change. The glucocorticoid receptor does not fall (up in 7 of 30
+row), so the fall of *Tsc22d3* is not a stress-hormone effect through it. AP-1
+(*Jun*, *Fos*, *Atf3*, *Egr1*) does rise, and
 AP-1 is also the dissociation-stress response, so part of the NF-κB/AP-1 signal
 may be how old tissue reacts to being dissociated. A ligand–receptor scan
 (LIANA resource; Dimitrov et al. 2022) adds little beyond 10.5: its score is
@@ -1337,7 +1366,7 @@ ortholog). Exploratory, and an inference: the miRNA itself is never measured.
 
 | miRNA | Robust row, target falling together | Without matrix gene, stromal row | Read as |
 | --- | --- | --- | --- |
-| **miR-29a/b/c** | 10–13 row, 5–6 tissue; stromal activity 6.3–7.7 | **2.8–4.5** | target-set signal **consistent with** more miR-29 activity in aging stroma; independent of NF-κB (ρ ≈ 0) |
+| **miR-29a/b/c** | 16–17 of 30 row, 6–7 tissue; stromal activity 4.8–6.4 | **1.9–3.6** | target-set signal **consistent with** more miR-29 activity in aging stroma; independent of NF-κB (ρ −0.2 to 0) |
 | miR-34a, miR-146a, miR-155 | slightly less active | unchanged | not readable: their target are inflammatory gene that NF-κB drives up |
 
 miR-29 represses collagen and is reported to rise with age (Ugalde et al. 2011),
@@ -1359,12 +1388,12 @@ distinguish.
 | --- | --- | --- | --- |
 | Does a senescence proxy accelerate? | Karin saturating removal, $\dot{X} = \eta t - \beta X/(\kappa + X)$, vs linear and exponential | a straight line wins for p16 in 10 of 11 organ; Karin never (2.4–6.2 AIC behind; 14.7 for the MOFA aging factor) | **not testable here**: bulk p16 sits near its detection floor |
 | Do animal drift apart? | spread between mice at each age | grows in 8 of 12 series (median ρ 0.16) | consistent with the stochastic model, but almost any model predicts it |
-| Do cell of one type become more heterogeneous? | per-mouse distance to centroid, depth-matched | rises in 16 of 26 robust row (10 stable to dropping any age) | aged population are more varied; batch can contribute |
-| Early-warning signal of a tipping point? | leading eigenvalue share, gene–gene correlation | no direction (6–8 stable rise, 6–8 stable fall) | no sign; this cross-sectional design is a weak test of it |
+| Do cell of one type become more heterogeneous? | per-mouse distance to centroid, depth-matched | rises in 24 of 36 robust row (13 stable to dropping any age; 16 of 26 before the sex-gene change) | aged population are more varied; batch can contribute |
+| Early-warning signal of a tipping point? | leading eigenvalue share, gene–gene correlation | no direction (11 stable rise, 7–13 stable fall) | no sign; this cross-sectional design is a weak test of it |
 | Can thymic involution be measured? | homeostatic naive-fraction ODE, $\dot{f} = \theta e^{-\delta t} - k f$, profile likelihood | involution rate 100-fold apart fit almost equally (profile varies 1–13% over δ = 0.003–3 per month) | **not identifiable**; no rate is reported |
 | Forecast an age inside the range (8 held-out age × 17 organ) | nearest age, linear, spline, sigmoid, linear ODE, SINDy, neural ODE | no model beats the nearest age: sigmoid wins 74 of 136 (sign p 0.35), spline 61; neural ODE (57), linear ODE (33) and SINDy (20 of 86 that ran, 50 diverged) are worse (BH Wilcoxon ≤ 0.001) | the spread between mice of one age exceeds any model difference |
 | Forecast beyond the range (27 from 1–24 month) | same; neural ODE from 5 seed | **no model beats carrying 24 month forward**: neural ODE wins 8 of 17 (sign p 1.0; median skill −0.27, −0.37 to 0.29 by seed), sigmoid 5, spline 3, linear 1; SINDy diverges in 10 of 17 | the earlier single-seed neural ODE "win" (0.21) is withdrawn |
-| Rebuild a held-out age's cell population | optimal transport (`moscot`) | for muscle endothelium and mesenchymal stem cell the interpolation beats random and lands below the distance between two mice of that age; for 5 immune and satellite row random does as well | 2 of 7 row; sex differs between the age involved, so part of every distance is sex |
+| Rebuild a held-out age's cell population | optimal transport (`moscot`) | for muscle endothelium and mesenchymal stem cell the interpolation beats random and lands below the distance between two mice of that age; for 4 immune and satellite row random does as well | 2 of 6 row; sex differs between the age involved, so part of every distance is sex |
 
 Figure (`figure/atlas/dynamics_*.png`): the rate balance of the Karin model and
 the loss of its steady state (`karin_phase`); p16 with the three fit
@@ -1382,23 +1411,25 @@ about nine time point are not interpretable.
 The lung, on the 16 animal and 24,490 cell of [section 5](#5-input), as a
 worked example of every step. Two cross-age column: the hand-picked pair of
 split the lung was first tested with, and the all-split rule the atlas uses.
+*Xist*, the only sex-chromosome gene among the lung's variable gene, is left
+out (10.3).
 
 | Cell type | AUROC, unseen mice | Cross-age, 2 split | Cross-age, all split | Shuffled | Verdict (all split) |
 | --- | --- | --- | --- | --- | --- |
-| Fibroblast of lung | 0.98 | **0.97** | **0.95** | 0.60 | Age signal |
-| Adventitial cell | 0.97 | **0.95** | **0.94** | 0.53 | Age signal |
-| Type II pneumocyte | 0.97 | **0.80** | **0.83** | 0.35 | Age signal, on 125 cell |
-| Alveolar macrophage | 0.95 | 0.66 | **0.74** | 0.40 | Age signal under all split only |
+| Fibroblast of lung | 0.98 | **0.98** | **0.95** | 0.58 | Age signal |
+| Adventitial cell | 0.96 | **0.95** | **0.94** | 0.49 | Age signal |
+| Type II pneumocyte | 0.96 | **0.81** | **0.83** | 0.34 | Age signal, on 125 cell |
+| Alveolar macrophage | 0.96 | **0.80** | **0.79** | 0.36 | Age signal |
+| Bronchial smooth muscle | 0.92 | **0.80** | **0.76** | 0.43 | Age signal |
 | Neutrophil | 0.97 | 0.78 | 0.69 | 0.70 | Void: shuffled control too high |
-| Bronchial smooth muscle | 0.92 | 0.66 | 0.68 | 0.47 | Partial |
-| Classical monocyte | 0.91 | 0.40 | 0.56 | 0.34 | Partial |
-| Intermediate monocyte | 0.88 | 0.40 | 0.55 | 0.50 | Partial |
-| CD8 T cell | 0.83 | 0.31 | 0.54 | 0.56 | Partial |
-| Myeloid dendritic cell | 0.79 | 0.29 | 0.52 | 0.51 | Partial |
-| Non-classical monocyte | 0.76 | 0.29 | 0.51 | 0.38 | Partial |
-| CD4 T cell | 0.73 | 0.24 | 0.52 | 0.34 | Partial, technically confounded |
-| NK cell | 0.68 | 0.24 | 0.46 | 0.47 | Batch driven |
-| B cell | 0.48 | 0.15 | 0.40 | 0.49 | Batch driven |
+| Classical monocyte | 0.91 | 0.52 | 0.60 | 0.32 | Partial |
+| Intermediate monocyte | 0.88 | 0.53 | 0.60 | 0.49 | Partial |
+| CD8 T cell | 0.83 | 0.48 | 0.60 | 0.51 | Partial |
+| Myeloid dendritic cell | 0.79 | 0.44 | 0.56 | 0.49 | Partial |
+| Non-classical monocyte | 0.76 | 0.42 | 0.55 | 0.35 | Partial |
+| CD4 T cell | 0.76 | 0.36 | 0.56 | 0.34 | Partial, technically confounded |
+| NK cell | 0.67 | 0.31 | 0.46 | 0.44 | Batch driven |
+| B cell | 0.54 | 0.34 | 0.45 | 0.44 | Batch driven |
 
 **The stromal signal holds under every control.** Fibroblast and adventitial
 cell keep an AUROC of 0.96 and above when the model is restricted to male animal
@@ -1407,16 +1438,17 @@ matches or beats LightGBM for every cell type in the table. Young fibroblast
 come largely from the two pooled 3m sample, and the signal survives when those
 are the test set.
 
-**The immune result is a batch detection on one split and chance on the rest.**
-On the two hand-picked split the immune cross-age AUROC sits far below 0.5
-(0.15–0.40): what the model learned is inverted on that particular new age
-group, a positive detection of a batch difference. Averaged over all twelve
-split it sits at 0.40–0.56, which is chance: whatever separates the animal does
-not carry to an unseen batch. Alveolar macrophage is the exception, passing
-under the all-split rule only (0.74), and stays open. Several immune type still
-rank the animal perfectly (`auroc_mouse` = 1.00 for alveolar macrophage, CD8 T,
-intermediate monocyte), the clearest demonstration in the project that perfect
-donor separation is not evidence of aging when age and batch move together.
+**The lymphocyte and monocyte result is a batch detection on one split and
+chance on the rest.** On the two hand-picked split their cross-age AUROC sits at
+0.31–0.53, below 0.5 for six of them: what the model learned is inverted on that
+particular new age group, a positive detection of a batch difference. Averaged
+over all twelve split it sits at 0.45–0.60, close to chance. With *Xist* in, as
+before the review, the hand-picked split gave 0.15–0.40, and alveolar macrophage
+(0.66) and bronchial smooth muscle (0.66) failed it: part of the lung's "batch"
+was the all-female 21m group. Several immune type still rank the animal
+perfectly (`auroc_mouse` = 1.00 for alveolar macrophage, CD8 T, intermediate
+monocyte), the clearest demonstration in the project that perfect donor
+separation is not evidence of aging when age and batch move together.
 
 Neutrophil are voided by their own control: AUROC 0.97 with a shuffled score of
 0.70 means this pipeline can reach 0.70 on that cell type from noise alone.
@@ -1431,6 +1463,8 @@ The weight are interpretation, not a test; section 10.5 tests them.
 | Fibroblast of lung | ***Cdkn1a*** (p21), *C3*, *Cfb*, *Fmo2*, *Gsta3*, *Nrp1*, *Snhg11* | *Col3a1*, *Col1a1*, *Col6a1*, *Sparc*, *Mfap5*, *Mgp* |
 | Adventitial cell | *Mt1*, *Bst2*, *Cdkn1c*, *Klf9*, *Efemp1*, *Ifi27l2a* | *Col3a1*, *Col1a1*, *Col1a2*, *Col5a2*, *Sparc*, *Cd248*, *Meg3* |
 | Type II pneumocyte | *Nrn1*, *Lrg1*, *Hp*, ***Cdkn1a***, *Nupr1*, *Cyp2b10* | *Igfbp7*, *Sparc*, *Cbr2*, *Serpinh1*, *Egfl6* |
+| Alveolar macrophage | *Cd63*, *Cd74*, *H2-Aa*, *H2-Eb1*, *H2-DMb1*, *Lpl*, *Spp1* | *Gal*, *Fabp5*, *Fn1*, *Il1rn*, *Clec4n*, *Adrb2* |
+| Bronchial smooth muscle | *Rgs12*, *H2-Eb1*, *Cd74*, *Lrg1*, *Prss23*, (*Vwf*, *Aqp1*) | *Sparc*, *Col4a1*, *Col4a2*, *Igfbp7*, *Cav2*, (*Dbp*) |
 
 - ***Cdkn1a*** (p21) rises in old fibroblast and old type II pneumocyte, and in
   the trajectory analysis it changes between 3m and old
@@ -1446,6 +1480,11 @@ The weight are interpretation, not a test; section 10.5 tests them.
   for.
 - **The acute-phase gene in type II pneumocyte** (*Lrg1*, *Hp*) are the
   epithelial side of the same inflammatory shift.
+- **The two type that pass once *Xist* is out** add antigen presentation: MHC
+  class II (*Cd74*, *H2-Aa*, *H2-Eb1*) rises in old alveolar macrophage and
+  bronchial smooth muscle. In smooth muscle the list also carries endothelial
+  marker (*Vwf*, *Aqp1*), which the `own` filter does not catch and which point
+  to doublet or contamination, so that row is read with caution.
 
 Flagged rather than interpreted: ***Dbp*** and ***Nr1d1***, circadian gene,
 appear as "young" gene in several cell type. They are a time-of-day signature,
@@ -1482,24 +1521,28 @@ Ridge regression on adult animal, leave one donor out, at $\alpha = 100$:
 | Cell type | MAE, month | Naive baseline | Spearman over donor |
 | --- | --- | --- | --- |
 | Alveolar macrophage | **4.4** | 9.1 | 0.83 |
-| Fibroblast of lung | **5.9** | 9.1 | 0.75 |
-| CD8 T cell | 5.8 | 7.6 | 0.61 |
-| Intermediate monocyte | 6.4 | 7.3 | 0.44 |
-| Bronchial smooth muscle | 6.7 | 9.0 | 0.61 |
-| Type II pneumocyte | 7.0 | 9.7 | 0.69 |
-| Classical monocyte | 7.1 | 9.1 | 0.61 |
-| Adventitial cell | 7.6 | 9.0 | 0.66 |
+| Fibroblast of lung | **5.7** | 9.1 | 0.77 |
+| CD8 T cell | 5.7 | 7.6 | 0.57 |
+| Intermediate monocyte | 6.3 | 7.3 | 0.42 |
+| Bronchial smooth muscle | 6.5 | 9.0 | 0.69 |
+| Type II pneumocyte | 6.9 | 9.7 | 0.72 |
+| Classical monocyte | 6.9 | 9.1 | 0.69 |
+| Adventitial cell | 7.3 | 9.0 | 0.65 |
 | Neutrophil | 8.0 | 8.1 | 0.05 |
 
-Most cell type beat the naive baseline, best in alveolar macrophage at 4.4 month
-against 9.1. All three strength tried ($\alpha$ = 10, 100, 1000) are in
+Every cell type beats the naive baseline at this strength, neutrophil only
+barely, best in alveolar macrophage at 4.4 month against 9.1; alveolar
+macrophage now also passes the batch check (10.12), so it is the best-supported
+lung clock. All three strength tried ($\alpha$ = 10, 100, 1000) are in
 `05c_clock`; the ordering of cell type is stable across them.
 
 **Where it breaks.** Holding out a whole age group, the clock put the 18m animal
-at 15 to 23 month, which is reasonable, and the 21m animal at 10 to 16, younger
-than the 18m animal and therefore wrong. Both 21m animal are female and form
-their own batch, so the clock is ordering batch rather than resolving age inside
-the old range. Leave-one-donor-out error is optimistic for the same reason: the
+at 15 to 24 month, which is reasonable, and the 21m animal at 12 to 17, younger
+than the 18m animal in every cell type and therefore wrong. Both 21m animal are
+female and form their own batch. With *Xist* in the feature, they were placed
+lower still (10 to 16), so part of the gap was sex; the rest is batch or a real
+plateau, which this design cannot separate. The clock is ordering batch rather
+than resolving age inside the old range. Leave-one-donor-out error is optimistic for the same reason: the
 held-out donor's batch-mates stay in training. The clock works as a coarse
 young-to-old estimator on this data and no further.
 
@@ -1516,7 +1559,7 @@ Every claim above depends on phase 2 to 4 having found these first:
   mature myeloid expansion rather than an antiviral response or blood
   contamination. It is excluded from the myeloid cell type, kept everywhere
   else, and reported with `with_excluded_mice` alongside (alveolar macrophage
-  0.95 → 0.90 with it).
+  0.96 → 0.91 with it).
 - **The two pooled 3m sample** (`3-M-5/6`, `3-M-7/8`) are about 50% fibroblast
   with almost no immune cell, so they are left out of the composition trend.
 - **Ambient RNA is present and only partly removable.** *S100a8* and *S100a9*
@@ -1526,24 +1569,29 @@ Every claim above depends on phase 2 to 4 having found these first:
   [section 7.6](#76-step-6-filter-the-gene-then-read-them) is the available
   substitute.
 - **Sex is confounded with age.** The 1m and 30m animal are all male and the 21m
-  all female. Sex can hide a signal as well as fake one: B cell go from 0.48 to
-  0.77 and NK cell from 0.68 to 0.89 on male animal alone.
+  all female. Sex can hide a signal as well as fake one: *Xist* alone, now left
+  out, held alveolar macrophage and bronchial smooth muscle below the batch
+  check (10.3), and even without it B cell go from 0.54 to 0.77 and NK cell from
+  0.67 to 0.89 on male animal alone, through autosomal gene that differ by sex.
 - **Doublet are rare here** (49 cell, 0.2%).
 
 ### 10.17 What This Shows
 
 - **A method result.** On an atlas where age and batch move together,
   mouse-held-out AUROC is not evidence of aging: in the lung 12 of 14 cell type
-  reach 0.7 on unseen mice and 4 keep a signal on unseen age group. The
-  cross-age check, a donor-permuted control, a technical-only and a sex-only
-  control together separate what survives.
-- **An atlas result, smaller than first claimed.** Within an organ, structural
-  cell keep a more transferable age signal than immune cell of the same mice;
-  whether they *pass* more often is not established once tissue is accounted
-  for, and outside the lung part of the immune shortfall was sex-chromosome
-  gene inverting the model between age group, not batch. Immune aging is
-  visible in some organ (limb muscle, spleen, and marrow once sex gene are
-  removed) and not in the lung.
+  reach 0.7 on unseen mice and 6 keep a signal on unseen age group, one of them
+  voided by its shuffled control. The cross-age check, a donor-permuted
+  control, a technical-only and a sex-only control together separate what
+  survives, and a sex-chromosome gene tied to age group can invert the check
+  itself, so it is left out.
+- **An atlas result, much smaller than first claimed.** 40 of 70 row carry an
+  age signal. Within an organ, structural cell keep a somewhat more
+  transferable signal than immune cell of the same mice (+0.10); they do not
+  *pass* more often, and outside the lung the immune pass rate is the higher
+  one. Most of the first draft's "immune cell fail" was sex-chromosome gene
+  inverting the model between age group, not batch. Immune aging is visible in
+  limb muscle, spleen, marrow, liver and bladder, and in lung alveolar
+  macrophage; only the lung lymphocyte and monocyte stay unresolved.
 - **What replicates.** Across a second lab and a bulk time course with ten age:
   **complement and MHC class I rise**, **collagen falls**. The p21 rise and the
   falling half of the published global aging gene do not hold.
@@ -1568,34 +1616,38 @@ what changed. A claim that did not survive is listed, not quietly removed.
 | # | Objection | Check run | Outcome |
 | --- | --- | --- | --- |
 | 1 | "Mouse-held-out AUROC in TMS is just batch." | Cross-age check on every row; shuffled control | Agreed; it is the project's premise. Only the cross-age score is used for any verdict |
-| 2 | "Your structural-vs-immune p-value treats 70 row as independent, but they share 23 mice." | Within-tissue permutation; tissue fixed effect; direction per tissue (07 §10) | **Pass-rate claim withdrawn** (p 0.13). Continuous difference holds (+0.14, p 0.001) |
-| 3 | "Structural row may just be bigger, so easier to classify." | Fixed-effect model with log cell count and mouse count | Neither explains the gap (p 0.70, 0.36) |
-| 4 | "Sex is tied to age group, and the model sees *Xist*." | Sex-only cross-age; sex-chromosome gene removed; male-only cross-age (07 §11–12) | Sex never fakes a pass (sex alone ≤ 0.68; all 29 pass without sex gene; 17 of 20 in male only). But it **hid** signal: 12 row rise without sex gene, immune pass rate 0.33 → 0.59 |
-| 5 | "With 2–6 test mice, a cross-age score of 0.72 could be 0.55 with other mice." | Bootstrap over test mice (07 §11) | Every pass has its interval above 0.5; 6 near-cutoff row reach below 0.7 |
-| 6 | "A batch shared by all young against all old passes every split." | Technical-only model | Bladder (2 row) and heart fibroblast flagged; 26 of 29 age-signal row clean. A batch that only shifts biology-like gene would still pass (limitation 11.3) |
+| 2 | "Your structural-vs-immune p-value treats 70 row as independent, but they share 23 mice." | Within-tissue permutation; tissue fixed effect; direction per tissue (07 §10) | **Pass-rate claim withdrawn** (p 0.20; 0.28 over all row). Continuous difference holds, smaller (+0.11, p 0.002) |
+| 3 | "Structural row may just be bigger, so easier to classify." | Fixed-effect model with log cell count and mouse count | Neither explains the gap (p 0.94, 0.16) |
+| 4 | "Sex is tied to age group, and the model sees *Xist*." | Sex-only cross-age; sex-chromosome gene removed; male-only cross-age (07 §11–12) | Sex never fakes a pass (sex alone ≤ 0.68; 19 of 22 pass in male only). But it **hid** signal: 11 row rise to an age signal without sex gene, none falls; immune pass rate 0.30 → 0.56. **Sex gene now left out of every model by default** and 05a–16 rerun |
+| 5 | "With 2–6 test mice, a cross-age score of 0.72 could be 0.55 with other mice." | Bootstrap over test mice (07 §11) | Every pass has its interval above 0.5; 5 near-cutoff row reach below 0.7 |
+| 6 | "A batch shared by all young against all old passes every split." | Technical-only model | Bladder (2 row), heart fibroblast and marrow precursor B flagged; 36 of 40 age-signal row clean. A batch that only shifts biology-like gene would still pass (limitation 11.3) |
 | 7 | "Failing the cross-age check could be real biology that differs between age group, e.g. growth at 1 month." | — (design) | Agreed: failing means "not demonstrable", stated in 7.4 |
-| 8 | "Robust row change more gene only because they have more mice." | Regression on mouse count (09 §9) | No: same median mice, ×4.9 after adjustment (p = 0.0006) |
+| 8 | "Robust row change more gene only because they have more mice." | Regression on mouse count (09 §9) | No: ×7.0 after adjustment (p < 0.0001); median mice 13.5 vs 11 |
 | 9 | "Low overlap between cell type does not prove aging is private." | — (wording) | Agreed: reworded to "little shared signal detectable at this sample size" |
 | 10 | "The transfer to another lab could be a shared technical difference." | Technical-only model trained on TMS, scored on Kimmel (10 §5b) | **Partly yes**: technical feature transfer in 12 of 19 row; expression clearly beats them in 10 (myeloid, epithelial, endothelial, adventitial). Lymphocyte transfer is unresolved |
 | 11 | "Absence in bulk does not prove the p21 rise is an artifact: bulk dilutes fibroblast." | — (wording) | Agreed: "not replicated, cause unknown" replaces "artifact" |
-| 12 | "Your model comparison p-values treat row as independent." | Row count per tissue | p-value removed; "lower in 14–16 of 19 row" reported. Ordinal clock wins in 8 of 9 tissue |
-| 13 | "MHC class I 'follows' IRF1 activity partly because MHC gene are IRF1 target." | MHC gene removed from every target set (12 §3) | Not circular: *Irf1* 0.61 → 0.60, *Rela* 0.54 → 0.52; only *Ciita* drops (0.50 → 0.36). Wording changed from "driven by" to "co-varies with" |
-| 14 | "The inflammatory signal in stromal cell may be ambient immune RNA, since old tissue hold more immune cell." | Activity recomputed without each row's foreign gene (12 §3b) | Interferon / NF-κB stay up in the same 6 tissue; the MHC class II driver *Ciita* halves (17 → 9 row), so class II in non-immune row is partly ambient |
+| 12 | "Your model comparison p-values treat row as independent." | Row count per tissue | p-value removed; "lower in 14–16 of 19 row" reported. Ordinal clock wins in 7 of 9 tissue |
+| 13 | "MHC class I 'follows' IRF1 activity partly because MHC gene are IRF1 target." | MHC gene removed from every target set (12 §3) | Not circular: *Irf1* 0.56 → 0.57, *Stat1* 0.62 → 0.60, *Rela* 0.53 → 0.50; *Ciita* drops most (0.52 → 0.47). Wording changed from "driven by" to "co-varies with" |
+| 14 | "The inflammatory signal in stromal cell may be ambient immune RNA, since old tissue hold more immune cell." | Activity recomputed without each row's foreign gene (12 §3b) | Interferon / NF-κB stay up in the same 8 tissue; the MHC class II driver *Ciita* drops 22 → 13 row, so class II in non-immune row is partly ambient |
 | 15 | "SINDy equation from nine time point are overfit." | Count of coefficient against point | Agreed: the equation figure was removed; SINDy is kept as a forecaster that diverges in about a third of case |
 | 16 | "The T-cell model reports a thymic half-life next to 'not identifiable'." | Profile likelihood; three fit at δ 100-fold apart | Agreed: no rate is reported; the figure now shows the non-identifiability |
 | 17 | "The neural ODE 'win' is one seed, one held-out age, best of six model." | 5 seed; sign and Wilcoxon test with BH over model | **Claim withdrawn**: wins 8 of 17 (sign p 1.0); median skill swings from −0.37 to 0.29 with the seed alone |
 | 18 | "Choosing gene by their age correlation and then showing they order by age is circular." | Gene chosen on half of the mice, the other half drawn | Phase portrait redrawn; it is labelled an illustration |
 | 19 | "Forecast gene were chosen with the held-out mice included." | Variable gene chosen on training mice only | Fixed before the forecast was rerun |
 | 20 | "Early-warning signal need repeated measurement of one system." | — (design) | Agreed: reported as cross-sectional heterogeneity, not a test of critical slowing down |
-| 21 | "Optimal transport: the held-out 21-month mice are all female, their neighbour mostly male." | — (design) | Agreed: stated; the 2-of-7 result is reported as a count |
+| 21 | "Optimal transport: the held-out 21-month mice are all female, their neighbour mostly male." | — (design) | Agreed: stated; the 2-of-6 result is reported as a count |
 | 22 | "Thresholds were tuned on the lung." | — (disclosure) | Yes: lung was the development tissue; the rule was frozen before the other eight (section 8) |
+| 23 | "You dropped the sex gene after seeing that it raises the score: that is choosing the setting on the test result." | Both version reported per row (`with_sex_genes_cross_age`); male-only check, which needs no gene choice | Disclosed: the change was made after objection 4's result. It rests on a mechanism (sex tied to age group inverts a split, it cannot create a pass), sex alone never passes, and no row falls; the thresholds were not touched |
 
 ### 11.2 Claim Withdrawn Or Downgraded
 
 | First draft | Now | Why |
 | --- | --- | --- |
-| Structural pass rate 0.75 vs immune 0.33, Fisher p = 0.008 | Continuous cross-age higher within tissue; pass-rate difference not significant | Row are not independent (objection 2) |
-| "Immune cell in marrow and elsewhere are batch driven" | Partly sex: 12 row pass once sex-chromosome gene are removed | Sex misaligned between age group (objection 4) |
+| Structural pass rate 0.75 vs immune 0.33, Fisher p = 0.008 | Continuous cross-age higher within tissue (+0.10); pass rate 0.74 vs 0.56, not significant; without lung, immune is higher | Row are not independent (2); sex gene hid immune signal (4) |
+| "Immune cell in marrow and elsewhere are batch driven" | Mostly sex: 11 row pass once sex-chromosome gene are left out, now the default | Sex misaligned between age group (4) |
+| Lung: "8 of 14 cell type batch driven (below 0.5)"; alveolar macrophage open | 6 of 14 below 0.5 on the hand-picked split; alveolar macrophage and bronchial smooth muscle pass | *Xist* inverted the hand-picked split (4) |
+| Shared hallmark: matrix (EMT) and oxidative phosphorylation fall | Split once the robust set is 30 row; cell-cycle set fall instead | Robust set changed with the sex-gene default (4) |
+| Published "down" aging gene lean the wrong way (p = 0.0001) | They simply do not replicate (86 of 190, p = 0.22) | Robust set changed (4) |
 | "Aging is mostly private to each cell type" | Little shared signal is detectable at this sample size | Low power produces low overlap (9) |
 | "This settles p21: a dataset artifact" | Not replicated, cause unknown | Bulk dilutes a fibroblast change (11) |
 | "Two regulator drive the shared signal" | Interferon and NF-κB activity co-vary with it | Activity inference is correlational (13) |
@@ -1606,7 +1658,7 @@ what changed. A claim that did not survive is listed, not quietly removed.
 | Kidney SINDy equation | Removed | Overfit (15) |
 | Lung thymic half-life ~14 month | Removed | Not identifiable (16) |
 | Spread grows "as the Karin model predicts" | Consistent with, not evidence for | Almost any model predicts it |
-| Optimal transport "the structural-versus-immune split again" | 2 of 7 row, sex-confounded | Small count, sex (21) |
+| Optimal transport "the structural-versus-immune split again" | 2 of 6 row, sex-confounded | Small count, sex (21) |
 
 ### 11.3 Limitation That Remain
 
@@ -1615,7 +1667,11 @@ what changed. A claim that did not survive is listed, not quietly removed.
 - **Age is confounded with processing batch and with sex.** The cross-age, sex
   and technical control detect this and report it per row; none can undo it. A
   cell type that fails the check is not shown to lack an age signal, only to
-  lack one this design can demonstrate.
+  lack one this design can demonstrate. Leaving out the six sex-chromosome gene
+  removes the strongest sex signal, not all of it: lung B and NK cell still
+  score higher in male mice alone, through autosomal gene.
+- **One new pass rests on one animal.** Liver Kupffer cell (0.71) falls to
+  partial without donor 30-M-3.
 - **A batch that shifts only biology-like gene is invisible.** The
   technical-only control sees depth, gene count, ribosomal, dissociation and
   blood fraction; a processing difference that moves, say, a stress-response
@@ -1642,20 +1698,20 @@ what changed. A claim that did not survive is listed, not quietly removed.
 
 ### 11.4 Next Step
 
-1. **Remove sex-chromosome gene by default and rerun 07–16.** Section 10.3
-   shows they hide immune signal; the downstream module still use verdict set
-   with them in. This is a code change of one default (`features` in
-   `age_eval` and `cross_age_auc`) and a rerun, no new data.
-2. **A design where age is not tied to batch**, the only real fix: a large
+The first step of the earlier list, leaving the sex-chromosome gene out by
+default and rerunning 05a–16, is done (10.3; objection 23).
+
+1. **A design where age is not tied to batch**, the only real fix: a large
    human cohort with many donor pooled across run (OneK1K: about 1,000 donor aged
    19 to 97, blood; Yazar et al. 2022), where the immune signal TMS could not
    judge can be tested and the clock and forecasting model of 10.8 and 10.11 have
-   enough independent donor to be told apart.
-3. **Measured miRNA.** Check the miR-29 inference of 10.10 against mature miRNA
+   enough independent donor to be told apart. This continues in the successor
+   repository, [HumanSingleCellAging](https://github.com/Feltlin/HumanSingleCellAging).
+2. **Measured miRNA.** Check the miR-29 inference of 10.10 against mature miRNA
    measured in the same cohort (Wagner et al. 2024).
-4. **A human check of the replicating gene.** MHC class I, complement and
+3. **A human check of the replicating gene.** MHC class I, complement and
    collagen loss against age in a human tissue atlas (GTEx).
-5. **A direct senescence measure.** Acceleration (Karin) could not be tested on
+4. **A direct senescence measure.** Acceleration (Karin) could not be tested on
    bulk p16; a dataset with a stronger senescence readout is needed.
 
 
